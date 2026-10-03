@@ -31,6 +31,8 @@
       <input name="model" value="{{ chain.model or '' }}" placeholder="Modell (optional)">
       <label class="mut">km vor der Aufzeichnung
         <input name="initial_km" inputmode="decimal" value="{{ '%g'|format(chain.initial_km or 0) }}"></label>
+      <label class="mut">Link zum Artikel im Shop (z. B. bike24)
+        <input name="shop_url" type="url" value="{{ chain.shop_url or '' }}" placeholder="https://www.bike24.de/p…"></label>
       {% if is_chain %}
       <label class="mut">Wechsel nach km seit der Montage (0 = keine Erinnerung)
         <input name="swap_km" inputmode="decimal" value="{{ '%g'|format(chain.swap_km or 0) }}"></label>
@@ -40,6 +42,7 @@
       <button>Speichern</button>
     </form>
   </details>
+  {% if chain.shop_url %}<a class="btn" style="margin-top:10px" href="{{ chain.shop_url }}" target="_blank" rel="noopener">Ersatz kaufen ↗</a>{% endif %}
   {{ photo_form('chain', chain) }}
 </div>
 

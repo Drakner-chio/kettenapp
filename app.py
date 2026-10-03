@@ -3,7 +3,7 @@ import os
 import secrets
 import time
 from datetime import date, datetime, timedelta
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 
 import requests
 from flask import (Flask, abort, flash, redirect, render_template, request,
@@ -83,6 +83,11 @@ class Chain(db.Model):
     photo = db.Column(db.String(80))
     kind = db.Column(db.String(12), default="chain")  # Schluessel aus KINDS
     swap_km = db.Column(db.Float, default=1000)       # Kette: Wechsel nach so vielen km seit Montage
+    shop_url = db.Column(db.String(500))              # Link zum Artikel im Shop
+
+    def shop_search(self):
+        """Suchlink fuer Teile ohne hinterlegten Artikel."""
+        return "https://www.bike24.de/suche?searchTerm=" + quote_plus(self.model or self.name)
     mounts = db.relationship("Mount", backref="chain", order_by="(Mount.start_day, Mount.id)")
     checks = db.relationship("WearCheck", backref="chain", order_by="WearCheck.day")
 
@@ -178,7 +183,8 @@ with app.app_context():
                             ("bike", "dt_rings", "VARCHAR(80)"), ("bike", "dt_cassette", "VARCHAR(120)"),
                             ("bike", "dt_group", "VARCHAR(120)"), ("bike", "dt_note", "VARCHAR(300)"),
                             ("chain", "kind", "VARCHAR(12) DEFAULT 'chain'"),
-                            ("chain", "swap_km", "FLOAT DEFAULT 1000")):
+                            ("chain", "swap_km", "FLOAT DEFAULT 1000"),
+                            ("chain", "shop_url", "VARCHAR(500)")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             # sofort abschliessen: eine offene Aenderung sperrt die Tabelle und
@@ -193,6 +199,12 @@ def form_day(field="day"):
         return date.fromisoformat(request.form.get(field, ""))
     except ValueError:
         return date.today()
+
+
+def form_url(field="shop_url"):
+    """Nur echte Web-Adressen annehmen."""
+    url = request.form.get(field, "").strip()[:500]
+    return url if url.startswith(("https://", "http://")) else ""
 
 
 def form_float(field, default=0.0):
@@ -526,12 +538,30 @@ def chain_edit(chain_id):
         chain.name = name
     chain.model = request.form.get("model", "").strip()[:120]
     chain.initial_km = form_float("initial_km", chain.initial_km or 0)
+    chain.shop_url = form_url()
     if chain.k == "chain":
         chain.swap_km = form_float("swap_km", chain.swap_km or 0)
         chain.wear_limit = form_float("wear_limit", chain.wear_limit) or 0.75
     db.session.commit()
     flash("Gespeichert")
     return redirect(url_for("chain_detail", chain_id=chain.id))
+
+
+@app.get("/shop")
+def shop():
+    """Ersatzteile: alle aktiven Teile mit Shop-Link, faellige zuerst."""
+    order = {"verschlissen": 0, "wechseln": 1, "bald": 2}
+    parts = [c for c in Chain.query.order_by(Chain.name) if not c.retired]
+    parts.sort(key=lambda c: (order.get(c.status(), 3), list(KINDS).index(c.k), c.name.lower()))
+    return render_template("shop.html", parts=parts)
+
+
+@app.post("/chain/<int:chain_id>/shop")
+def chain_shop(chain_id):
+    chain = db.get_or_404(Chain, chain_id)
+    chain.shop_url = form_url()
+    db.session.commit()
+    return redirect(url_for("shop"))
 
 
 @app.post("/chain/<int:chain_id>/retire")

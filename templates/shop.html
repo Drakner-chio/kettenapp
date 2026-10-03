@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Ersatzteile</h2>
+{% for c in parts %}
+<div class="card">
+  <div class="row">
+    <strong><a href="{{ url_for('chain_detail', chain_id=c.id) }}" style="color:inherit;text-decoration:none">{{ c.name }}</a></strong>
+    {% if c.status() %}<span class="badge {{ c.status() }}">{{ c.status() }}</span>{% endif %}
+  </div>
+  <div class="mut">
+    {{ KINDS[c.k] }}{% if c.model %} · {{ c.model }}{% endif %}
+    {% if c.home_bike() %} · {{ c.home_bike().name }}{% endif %}
+    · {{ "%.0f"|format(c.km()) }} km
+  </div>
+  {% if c.shop_url %}
+  <a class="btn" style="margin-top:10px" href="{{ c.shop_url }}" target="_blank" rel="noopener">Artikel öffnen ↗</a>
+  {% else %}
+  <a class="btn plain" style="margin-top:10px" href="{{ c.shop_search() }}" target="_blank" rel="noopener">Bei bike24 suchen ↗</a>
+  {% endif %}
+  <details style="margin-top:8px">
+    <summary class="mut" style="font-weight:400">{{ 'Link ändern' if c.shop_url else 'Artikel-Link hinterlegen' }}</summary>
+    <form method="post" action="{{ url_for('chain_shop', chain_id=c.id) }}" class="stack">
+      <input name="shop_url" type="url" value="{{ c.shop_url or '' }}" placeholder="https://www.bike24.de/p…">
+      <button>Speichern</button>
+    </form>
+  </details>
+</div>
+{% else %}
+<p class="mut">Noch keine Teile angelegt.</p>
+{% endfor %}
+{% endblock %}

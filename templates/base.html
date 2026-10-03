@@ -20,7 +20,13 @@
   [hidden] { display:none !important; }
   body { margin:0; font:16px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
   header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; }
+  header { gap:12px; flex-wrap:wrap; }
   header a { color:var(--fg); text-decoration:none; font-weight:700; font-size:1.15rem; }
+  header nav { display:flex; gap:14px; margin-right:auto; }
+  header nav a { font-size:.95rem; font-weight:500; color:var(--mut); padding:4px 0; }
+  header nav a.on { color:var(--fg); border-bottom:2px solid var(--acc); }
+  a.btn { display:block; text-align:center; background:var(--acc); color:#fff; text-decoration:none; font-weight:600; padding:10px; border-radius:8px; }
+  a.btn.plain { background:none; color:var(--mut); border:1px solid var(--line); font-weight:400; }
   main { max-width:640px; margin:0 auto; padding:0 16px 48px; }
   h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; color:var(--mut); margin:28px 0 8px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
@@ -58,6 +64,10 @@
 <header>
   <a href="{{ url_for('index') }}">⛓ Ketten</a>
   {% if session.get('ok') %}
+  <nav>
+    <a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="on"{% endif %}>Übersicht</a>
+    <a href="{{ url_for('shop') }}" {% if request.endpoint == 'shop' %}class="on"{% endif %}>Ersatzteile</a>
+  </nav>
   <form method="post" action="{{ url_for('logout') }}"><button class="plain">Abmelden</button></form>
   {% endif %}
 </header>
