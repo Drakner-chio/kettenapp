@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_parts.html" import photo_form %}
+{% block body %}
+{% set cur = chain.current_mount() %}
+<h2>Kette</h2>
+<div class="card">
+  {% if chain.photo %}<img class="photo" src="{{ url_for('photo', name=chain.photo) }}" alt="{{ chain.name }}">{% endif %}
+  <div class="row">
+    <strong>{{ chain.name }}</strong>
+    <span class="badge {{ chain.status() }}">{{ chain.status() }}</span>
+  </div>
+  <div class="big">{{ "%.0f"|format(chain.km()) }} km</div>
+  <div class="mut">
+    {% if chain.model %}{{ chain.model }} · {% endif %}
+    Wechselgrenze {{ "%.2f"|format(chain.wear_limit) }} %
+    {% if chain.retired %} · ausgemustert{% elif cur %} · montiert{% else %} · nicht montiert{% endif %}
+    {% if chain.home_bike() %} · <a href="{{ url_for('bike_detail', bike_id=chain.home_bike().id) }}">{{ chain.home_bike().name }}</a>{% endif %}
+  </div>
+  {{ photo_form('chain', chain) }}
+</div>
+
+<h2>Verschleiß messen</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('chain_wear', chain_id=chain.id) }}" class="stack" style="margin-top:0">
+    <div class="two">
+      <input name="percent" inputmode="decimal" placeholder="Längung in %, z. B. 0,5" required>
+      <input type="date" name="day" value="{{ today }}">
+    </div>
+    <button>Messung speichern</button>
+  </form>
+  {% if chain.checks %}
+  <table style="margin-top:12px">
+    <tr><th>Datum</th><th class="num">bei km</th><th class="num">Längung</th></tr>
+    {% for w in chain.checks|reverse %}
+    <tr><td>{{ w.day.strftime('%d.%m.%y') }}</td>
+        <td class="num">{{ "%.0f"|format(w.km_at) }}</td>
+        <td class="num">{{ "%.2f"|format(w.percent) }} %</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+
+<h2>Montage</h2>
+<div class="card">
+  {% if bikes %}
+  <form method="post" action="{{ url_for('chain_mount', chain_id=chain.id) }}" class="stack" style="margin-top:0">
+    <div class="two">
+      <select name="bike_id" required>
+        {% for b in bikes %}<option value="{{ b.id }}" {% if cur and cur.bike_id == b.id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+      </select>
+      <input type="date" name="day" value="{{ today }}">
+    </div>
+    <button>An dieses Rad montieren</button>
+    <span class="mut">Die bisherige Kette des Rads wird dabei automatisch abgenommen. Das Datum darf in der Vergangenheit liegen.</span>
+  </form>
+  {% else %}
+  <p class="mut" style="margin:0">Erst ein Rad anlegen oder Strava verbinden.</p>
+  {% endif %}
+
+  {% if cur %}
+  <form method="post" action="{{ url_for('chain_unmount', chain_id=chain.id) }}" class="stack">
+    <input type="date" name="day" value="{{ today }}">
+    <div class="two">
+      <button class="plain" style="width:100%">Abnehmen</button>
+      <button class="plain" style="width:100%" name="retire" value="1"
+              onclick="return confirm('Kette ausmustern?')">Abnehmen und ausmustern</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if chain.mounts %}
+  <table style="margin-top:12px">
+    <tr><th>Rad</th><th>Zeitraum</th><th class="num">km</th></tr>
+    {% for m in chain.mounts|reverse %}
+    <tr><td>{{ m.bike.name }}</td>
+        <td>{{ m.start_day.strftime('%d.%m.%y') }} – {{ m.end_day.strftime('%d.%m.%y') if m.end_day else 'heute' }}</td>
+        <td class="num">{{ "%.0f"|format(m.km()) }}</td></tr>
+    {% endfor %}
+    {% if chain.initial_km %}
+    <tr><td colspan="2" class="mut">vor der Aufzeichnung</td><td class="num">{{ "%.0f"|format(chain.initial_km) }}</td></tr>
+    {% endif %}
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

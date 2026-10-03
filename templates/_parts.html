@@ -1,0 +1,40 @@
+{% macro chain_card(c, sub=False) %}
+<a class="block{% if sub %} sub{% endif %}" href="{{ url_for('chain_detail', chain_id=c.id) }}">
+<div class="card item" {% if c.retired %}style="opacity:.55"{% endif %}>
+  {% if c.photo %}<img class="thumb" src="{{ url_for('photo', name=c.photo) }}" alt="">{% endif %}
+  <div class="grow">
+    <div class="row">
+      <strong>{{ c.name }}</strong>
+      <strong style="white-space:nowrap">{{ "%.0f"|format(c.km()) }} km</strong>
+    </div>
+    <div class="row mut">
+      <span>
+        {% if c.retired %}ausgemustert
+        {% elif c.current_mount() %}montiert
+        {% elif c.mounts %}in Reserve
+        {% else %}noch nie montiert{% endif %}
+        {% if c.last_wear() %} · {{ "%.2f"|format(c.last_wear().percent) }} %{% endif %}
+      </span>
+      <span class="badge {{ c.status() }}">{{ c.status() }}</span>
+    </div>
+  </div>
+</div>
+</a>
+{% endmacro %}
+
+{% macro photo_form(kind, obj) %}
+<details {% if obj.photo %}style="margin-top:6px"{% endif %}>
+  <summary class="mut" style="font-weight:400">{{ 'Foto ändern' if obj.photo else 'Foto hinzufügen' }}</summary>
+  <form method="post" enctype="multipart/form-data" class="stack"
+        action="{{ url_for('photo_set', kind=kind, obj_id=obj.id) }}">
+    <input type="file" name="photo" accept="image/*" required>
+    <button>Hochladen</button>
+  </form>
+  {% if obj.photo %}
+  <form method="post" action="{{ url_for('photo_set', kind=kind, obj_id=obj.id) }}" class="stack"
+        onsubmit="return confirm('Foto löschen?')">
+    <button class="plain" name="delete" value="1" style="width:100%">Foto löschen</button>
+  </form>
+  {% endif %}
+</details>
+{% endmacro %}

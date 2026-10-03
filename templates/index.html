@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_parts.html" import chain_card %}
+{% block body %}
+
+{% if all_bikes %}
+<h2>Kilometer von Hand eintragen</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('ride_add') }}" class="stack" style="margin-top:0">
+    <select name="bike_id" required>
+      {% for b in all_bikes %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+    </select>
+    <div class="two">
+      <input name="km" inputmode="decimal" placeholder="km, z. B. 25" required>
+      <input type="date" name="day" value="{{ today }}">
+    </div>
+    <input name="note" placeholder="Notiz, z. B. Pendeln KW 40 (optional)">
+    <button>Eintragen</button>
+  </form>
+</div>
+{% endif %}
+
+<h2>Räder und ihre Ketten</h2>
+{% for b in bikes %}
+<a class="block" href="{{ url_for('bike_detail', bike_id=b.bike.id) }}">
+<div class="card item">
+  {% if b.bike.photo %}<img class="thumb" src="{{ url_for('photo', name=b.bike.photo) }}" alt="">{% endif %}
+  <div class="grow">
+    <div class="row">
+      <strong>{{ b.bike.name }}</strong>
+      <span class="big">{{ "%.0f"|format(b.km) }} km</span>
+    </div>
+    <div class="mut">
+      {{ b.chains|length }} {{ 'Kette' if b.chains|length == 1 else 'Ketten' }}
+      {% if not b.bike.strava_id %} · manuell angelegt{% endif %}
+    </div>
+  </div>
+</div>
+</a>
+{% for c in b.chains %}{{ chain_card(c, sub=True) }}{% endfor %}
+{% else %}
+<p class="mut">Noch keine Räder. Lege unten in den Einstellungen eines an.</p>
+{% endfor %}
+
+{% if loose %}
+<h2>Ketten ohne Rad</h2>
+{% for c in loose %}{{ chain_card(c) }}{% endfor %}
+{% endif %}
+
+<div class="card">
+  <details>
+    <summary>Neue Kette</summary>
+    <form method="post" action="{{ url_for('chain_add') }}" class="stack">
+      <input name="name" placeholder="Name, z. B. Rennrad Kette A" required>
+      <input name="model" placeholder="Modell, z. B. Shimano CN-HG701 (optional)">
+      <div class="two">
+        <input name="initial_km" inputmode="decimal" placeholder="bisherige km (optional)">
+        <input name="wear_limit" inputmode="decimal" placeholder="Wechselgrenze %, Standard 0,75">
+      </div>
+      <button>Anlegen</button>
+    </form>
+  </details>
+</div>
+
+{% if manual %}
+<h2>Letzte manuelle Einträge</h2>
+<div class="card">
+  <table>
+    {% for r in manual %}
+    <tr>
+      <td>{{ r.day.strftime('%d.%m.%y') }}</td>
+      <td>{{ r.bike.name }}{% if r.note %}<br><span class="mut">{{ r.note }}</span>{% endif %}</td>
+      <td class="num">{{ "%g"|format(r.km) }} km</td>
+      <td class="num">
+        <form method="post" action="{{ url_for('ride_delete', ride_id=r.id) }}"
+              onsubmit="return confirm('Eintrag löschen?')"><button class="plain">✕</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<h2>Einstellungen</h2>
+<div class="card">
+  {% if not strava_configured %}
+    <p class="mut" style="margin:0">Strava ist nicht eingerichtet (STRAVA_CLIENT_ID fehlt in der .env).</p>
+  {% elif not strava_connected %}
+    <a href="{{ url_for('strava_login') }}"><button type="button">Mit Strava verbinden</button></a>
+  {% else %}
+    <form method="post" action="{{ url_for('strava_sync_now') }}" class="stack" style="margin-top:0">
+      <button>Strava jetzt abgleichen</button>
+      <label class="mut"><input type="checkbox" name="full" value="1" style="width:auto"> alle Fahrten neu einlesen</label>
+    </form>
+  {% endif %}
+  <details style="margin-top:12px">
+    <summary>Rad ohne Strava anlegen</summary>
+    <form method="post" action="{{ url_for('bike_add') }}" class="stack">
+      <input name="name" placeholder="Name" required>
+      <button>Anlegen</button>
+    </form>
+  </details>
+</div>
+{% endblock %}

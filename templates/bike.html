@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_parts.html" import chain_card, photo_form %}
+{% block body %}
+<h2>Rad</h2>
+<div class="card">
+  {% if bike.photo %}<img class="photo" src="{{ url_for('photo', name=bike.photo) }}" alt="{{ bike.name }}">{% endif %}
+  <div class="row">
+    <strong>{{ bike.name }}</strong>
+    <span class="big">{{ "%.0f"|format(km) }} km</span>
+  </div>
+  {{ photo_form('bike', bike) }}
+</div>
+
+<h2>Ketten dieses Rads</h2>
+{% for c in chains %}
+  {{ chain_card(c) }}
+  {% if not c.retired and not c.current_mount() %}
+  <form method="post" action="{{ url_for('chain_mount', chain_id=c.id) }}" style="margin:-4px 0 14px">
+    <input type="hidden" name="bike_id" value="{{ bike.id }}">
+    <input type="hidden" name="day" value="{{ today }}">
+    <input type="hidden" name="back" value="bike">
+    <button class="plain">↑ heute montieren (wechselt die aktuelle Kette aus)</button>
+  </form>
+  {% endif %}
+{% else %}
+<p class="mut">Noch keine Kette. Lege auf der Startseite eine an und montiere sie an dieses Rad.</p>
+{% endfor %}
+{% endblock %}
