@@ -2,23 +2,48 @@
 {% from "_parts.html" import photo_form %}
 {% block body %}
 {% set cur = chain.current_mount() %}
-<h2>Kette</h2>
+{% set done = chain.since_mount() %}
+{% set is_chain = chain.k == 'chain' %}
+<h2>{{ KINDS[chain.k] }}</h2>
 <div class="card">
   {% if chain.photo %}<img class="photo" src="{{ url_for('photo', name=chain.photo) }}" alt="{{ chain.name }}">{% endif %}
   <div class="row">
     <strong>{{ chain.name }}</strong>
-    <span class="badge {{ chain.status() }}">{{ chain.status() }}</span>
+    {% if chain.status() %}<span class="badge {{ chain.status() }}">{{ chain.status() }}</span>{% endif %}
   </div>
-  <div class="big">{{ "%.0f"|format(chain.km()) }} km</div>
-  <div class="mut">
+  <div class="big">{{ "%.0f"|format(chain.km()) }} km <span class="mut">gesamt</span></div>
+  {% if is_chain and done is not none and chain.swap_km %}
+  <div>{{ "%.0f"|format(done) }} von {{ "%.0f"|format(chain.swap_km) }} km seit der Montage</div>
+  <div class="bar"><i class="{{ chain.status() }}" style="width:{{ [100, 100 * done / chain.swap_km]|min|round|int }}%"></i></div>
+  {% elif done is not none %}
+  <div>{{ "%.0f"|format(done) }} km seit der Montage</div>
+  {% endif %}
+  <div class="mut" style="margin-top:6px">
     {% if chain.model %}{{ chain.model }} · {% endif %}
-    Wechselgrenze {{ "%.2f"|format(chain.wear_limit) }} %
-    {% if chain.retired %} · ausgemustert{% elif cur %} · montiert{% else %} · nicht montiert{% endif %}
+    {% if chain.retired %}im Ruhestand{% elif cur %}montiert{% else %}nicht montiert{% endif %}
     {% if chain.home_bike() %} · <a href="{{ url_for('bike_detail', bike_id=chain.home_bike().id) }}">{{ chain.home_bike().name }}</a>{% endif %}
+    {% if is_chain %} · Verschleißgrenze {{ "%.2f"|format(chain.wear_limit) }} %{% endif %}
   </div>
+  <details style="margin-top:8px">
+    <summary class="mut" style="font-weight:400">Bearbeiten</summary>
+    <form method="post" action="{{ url_for('chain_edit', chain_id=chain.id) }}" class="stack">
+      <input name="name" value="{{ chain.name }}" placeholder="Name" required>
+      <input name="model" value="{{ chain.model or '' }}" placeholder="Modell (optional)">
+      <label class="mut">km vor der Aufzeichnung
+        <input name="initial_km" inputmode="decimal" value="{{ '%g'|format(chain.initial_km or 0) }}"></label>
+      {% if is_chain %}
+      <label class="mut">Wechsel nach km seit der Montage (0 = keine Erinnerung)
+        <input name="swap_km" inputmode="decimal" value="{{ '%g'|format(chain.swap_km or 0) }}"></label>
+      <label class="mut">Verschleißgrenze in %
+        <input name="wear_limit" inputmode="decimal" value="{{ '%g'|format(chain.wear_limit) }}"></label>
+      {% endif %}
+      <button>Speichern</button>
+    </form>
+  </details>
   {{ photo_form('chain', chain) }}
 </div>
 
+{% if is_chain %}
 <h2>Verschleiß messen</h2>
 <div class="card">
   <form method="post" action="{{ url_for('chain_wear', chain_id=chain.id) }}" class="stack" style="margin-top:0">
@@ -39,6 +64,7 @@
   </table>
   {% endif %}
 </div>
+{% endif %}
 
 <h2>Montage</h2>
 <div class="card">
@@ -46,25 +72,21 @@
   <form method="post" action="{{ url_for('chain_mount', chain_id=chain.id) }}" class="stack" style="margin-top:0">
     <div class="two">
       <select name="bike_id" required>
-        {% for b in bikes %}<option value="{{ b.id }}" {% if cur and cur.bike_id == b.id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+        {% for b in bikes %}<option value="{{ b.id }}" {% if chain.home_bike() and chain.home_bike().id == b.id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
       </select>
       <input type="date" name="day" value="{{ today }}">
     </div>
     <button>An dieses Rad montieren</button>
-    <span class="mut">Die bisherige Kette des Rads wird dabei automatisch abgenommen. Das Datum darf in der Vergangenheit liegen.</span>
+    <span class="mut">{{ 'Die bisherige Kette' if is_chain else 'Das bisherige Teil dieser Art' }} am Rad wird dabei automatisch abgenommen. Das Datum darf in der Vergangenheit liegen.</span>
   </form>
   {% else %}
-  <p class="mut" style="margin:0">Erst ein Rad anlegen oder Strava verbinden.</p>
+  <p class="mut" style="margin:0">Erst ein Rad anlegen.</p>
   {% endif %}
 
   {% if cur %}
   <form method="post" action="{{ url_for('chain_unmount', chain_id=chain.id) }}" class="stack">
     <input type="date" name="day" value="{{ today }}">
-    <div class="two">
-      <button class="plain" style="width:100%">Abnehmen</button>
-      <button class="plain" style="width:100%" name="retire" value="1"
-              onclick="return confirm('Kette ausmustern?')">Abnehmen und ausmustern</button>
-    </div>
+    <button class="plain" style="width:100%">Abnehmen</button>
   </form>
   {% endif %}
 
@@ -82,6 +104,7 @@
   </table>
   {% endif %}
 </div>
+
 <h2>Verwaltung</h2>
 <div class="card">
   <div class="two">
@@ -89,10 +112,10 @@
       <button class="plain" style="width:100%">{{ 'Aus dem Ruhestand holen' if chain.retired else 'In den Ruhestand' }}</button>
     </form>
     <form method="post" action="{{ url_for('chain_delete', chain_id=chain.id) }}"
-          onsubmit="return confirm('Kette mit allen Messungen und Montagen endgültig löschen?')">
+          onsubmit="return confirm('Endgültig löschen, mit allen Messungen und Montagen?')">
       <button class="plain" style="width:100%;color:#cf222e">Löschen</button>
     </form>
   </div>
-  <p class="mut" style="margin:10px 0 0">Im Ruhestand bleibt die Kette mit ihrer Historie erhalten und verschwindet nur aus der Übersicht.</p>
+  <p class="mut" style="margin:10px 0 0">Im Ruhestand bleibt das Teil mit seiner Historie erhalten und verschwindet nur aus der Übersicht.</p>
 </div>
 {% endblock %}

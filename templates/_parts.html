@@ -1,4 +1,5 @@
 {% macro chain_card(c, sub=False) %}
+{% set done = c.since_mount() %}
 <a class="block{% if sub %} sub{% endif %}" href="{{ url_for('chain_detail', chain_id=c.id) }}">
 <div class="card item" {% if c.retired %}style="opacity:.55"{% endif %}>
   {% if c.photo %}<img class="thumb" src="{{ url_for('photo', name=c.photo) }}" alt="">{% endif %}
@@ -9,14 +10,19 @@
     </div>
     <div class="row mut">
       <span>
-        {% if c.retired %}ausgemustert
-        {% elif c.current_mount() %}montiert
+        {{ KINDS[c.k] }} ·
+        {% if c.retired %}im Ruhestand
+        {% elif done is not none %}montiert
         {% elif c.mounts %}in Reserve
         {% else %}noch nie montiert{% endif %}
+        {% if c.k == 'chain' and done is not none and c.swap_km %} · {{ "%.0f"|format(done) }} / {{ "%.0f"|format(c.swap_km) }} km{% endif %}
         {% if c.last_wear() %} · {{ "%.2f"|format(c.last_wear().percent) }} %{% endif %}
       </span>
-      <span class="badge {{ c.status() }}">{{ c.status() }}</span>
+      {% if c.status() %}<span class="badge {{ c.status() }}">{{ c.status() }}</span>{% endif %}
     </div>
+    {% if c.k == 'chain' and done is not none and c.swap_km %}
+    <div class="bar"><i class="{{ c.status() }}" style="width:{{ [100, 100 * done / c.swap_km]|min|round|int }}%"></i></div>
+    {% endif %}
   </div>
 </div>
 </a>

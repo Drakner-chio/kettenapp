@@ -19,7 +19,7 @@
 </div>
 {% endif %}
 
-<h2>Räder und ihre Ketten</h2>
+<h2>Räder und ihr Antrieb</h2>
 {% for b in bikes %}
 <a class="block" href="{{ url_for('bike_detail', bike_id=b.bike.id) }}">
 <div class="card item">
@@ -31,7 +31,7 @@
     </div>
     <div class="mut">
       {% if b.bike.drivetrain() %}{{ b.bike.drivetrain() }}<br>{% endif %}
-      {{ b.chains|length }} {{ 'Kette' if b.chains|length == 1 else 'Ketten' }}
+      {% set n = b.chains|selectattr('k', 'equalto', 'chain')|list|length %}{{ n }} {{ 'Kette' if n == 1 else 'Ketten' }}
       {% if not b.bike.strava_id %} · manuell angelegt{% endif %}
     </div>
   </div>
@@ -43,19 +43,23 @@
 {% endfor %}
 
 {% if loose %}
-<h2>Ketten ohne aktives Rad</h2>
+<h2>Teile ohne aktives Rad</h2>
 {% for c in loose %}{{ chain_card(c) }}{% endfor %}
 {% endif %}
 
 <div class="card">
   <details>
-    <summary>Neue Kette</summary>
+    <summary>Neues Teil (Kette, Kassette, Kettenblatt)</summary>
     <form method="post" action="{{ url_for('chain_add') }}" class="stack">
-      <input name="name" placeholder="Name, z. B. Rennrad Kette A" required>
-      <input name="model" placeholder="Modell, z. B. Shimano CN-HG701 (optional)">
-      <div class="two">
-        <input name="initial_km" inputmode="decimal" placeholder="bisherige km (optional)">
-        <input name="wear_limit" inputmode="decimal" placeholder="Wechselgrenze %, Standard 0,75">
+      <select name="kind" onchange="this.form.querySelector('.only-chain').hidden = this.value != 'chain'">
+        {% for k, label in KINDS.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+      </select>
+      <input name="name" placeholder="Name, z. B. Kette A oder Kassette 11-34" required>
+      <input name="model" placeholder="Modell, z. B. Shimano Ultegra (optional)">
+      <input name="initial_km" inputmode="decimal" placeholder="bisherige km (optional)">
+      <div class="two only-chain">
+        <input name="swap_km" inputmode="decimal" placeholder="Wechsel nach km, Standard 1000">
+        <input name="wear_limit" inputmode="decimal" placeholder="Verschleißgrenze %, Standard 0,75">
       </div>
       <button>Anlegen</button>
     </form>
@@ -71,7 +75,7 @@
       <tr><td>Rad</td><td><a href="{{ url_for('bike_detail', bike_id=b.id) }}">{{ b.name }}</a></td></tr>
       {% endfor %}
       {% for c in retired_chains %}
-      <tr><td>Kette</td><td><a href="{{ url_for('chain_detail', chain_id=c.id) }}">{{ c.name }}</a>
+      <tr><td>{{ KINDS[c.k] }}</td><td><a href="{{ url_for('chain_detail', chain_id=c.id) }}">{{ c.name }}</a>
         <span class="mut">· {{ "%.0f"|format(c.km()) }} km</span></td></tr>
       {% endfor %}
     </table>

@@ -47,9 +47,32 @@
     <button class="plain">↑ heute montieren</button>
   </form>
   {% endif %}
-{% else %}
-<p class="mut">Noch nichts eingetragen. Lege das Teil auf der Startseite an und montiere es an dieses Rad.</p>
 {% endfor %}
+{% if not bike.retired %}
+<div class="card">
+  <details>
+    <summary>{{ KINDS[kind] }} hinzufügen</summary>
+    <form method="post" action="{{ url_for('chain_add') }}" class="stack">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="bike_id" value="{{ bike.id }}">
+      <input name="name" required placeholder="Name, z. B. {{ {'chain': 'Kette A', 'cassette': '11-34', 'chainring': '50/34'}[kind] }}">
+      <input name="model" placeholder="Modell (optional)">
+      <div class="two">
+        <input name="initial_km" inputmode="decimal" placeholder="bisherige km (optional)">
+        <label class="mut">montiert seit <input type="date" name="day" value="{{ today }}"></label>
+      </div>
+      {% if kind == 'chain' %}
+      <div class="two">
+        <input name="swap_km" inputmode="decimal" placeholder="Wechsel nach km, Standard 1000">
+        <input name="wear_limit" inputmode="decimal" placeholder="Verschleißgrenze %, Standard 0,75">
+      </div>
+      {% endif %}
+      <button>Anlegen und montieren</button>
+      <span class="mut">Das Teil wird ab dem gewählten Datum an diesem Rad montiert und löst das bisherige ab. Für ein Reserveteil danach einfach das alte wieder montieren.</span>
+    </form>
+  </details>
+</div>
+{% endif %}
 {% endfor %}
 
 {% if manual %}

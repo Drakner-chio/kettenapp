@@ -474,7 +474,23 @@ def chain_add():
                   wear_limit=form_float("wear_limit", 0.75) or 0.75)
     db.session.add(chain)
     db.session.commit()
+    # direkt von der Rad-Seite angelegt: gleich an diesem Rad montieren
+    bike = db.session.get(Bike, int(request.form.get("bike_id") or 0))
+    if bike:
+        mount_part(chain, bike, form_day())
+        db.session.commit()
+        return redirect(url_for("bike_detail", bike_id=bike.id))
     return redirect(url_for("chain_detail", chain_id=chain.id))
+
+
+def mount_part(chain, bike, day):
+    """Teil montieren; loest am Rad nur das Teil derselben Art ab."""
+    for m in Mount.query.filter(Mount.end_day.is_(None),
+                                (Mount.chain_id == chain.id) | (Mount.bike_id == bike.id)):
+        if m.chain_id == chain.id or m.chain.k == chain.k:
+            m.end_day = max(day, m.start_day)
+    db.session.add(Mount(chain_id=chain.id, bike_id=bike.id, start_day=day))
+    chain.retired = False
 
 
 @app.post("/chain/<int:chain_id>/mount")
@@ -482,14 +498,7 @@ def chain_mount(chain_id):
     """Kette an ein Rad montieren; beendet offene Zeitraeume von Kette und Rad."""
     chain = db.get_or_404(Chain, chain_id)
     bike = db.get_or_404(Bike, int(request.form["bike_id"]))
-    day = form_day()
-    for m in Mount.query.filter(Mount.end_day.is_(None),
-                                (Mount.chain_id == chain.id) | (Mount.bike_id == bike.id)):
-        # am Rad nur das Teil derselben Art abloesen (Kette gegen Kette usw.)
-        if m.chain_id == chain.id or m.chain.k == chain.k:
-            m.end_day = max(day, m.start_day)
-    db.session.add(Mount(chain_id=chain.id, bike_id=bike.id, start_day=day))
-    chain.retired = False
+    mount_part(chain, bike, form_day())
     db.session.commit()
     if request.form.get("back") == "bike":
         return redirect(url_for("bike_detail", bike_id=bike.id))
