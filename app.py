@@ -40,6 +40,23 @@ class Bike(db.Model):
     name = db.Column(db.String(120), nullable=False)
     photo = db.Column(db.String(80))
     retired = db.Column(db.Boolean, default=False)
+    # Antrieb
+    dt_front = db.Column(db.String(4))       # "1x", "2x", "3x"
+    dt_speeds = db.Column(db.String(4))      # Ritzel hinten, z. B. "12"
+    dt_rings = db.Column(db.String(80))      # Kettenblatt/-blaetter, z. B. "50/34"
+    dt_cassette = db.Column(db.String(120))  # z. B. "11-34 Ultegra"
+    dt_group = db.Column(db.String(120))     # Schaltgruppe
+    dt_note = db.Column(db.String(300))
+
+    def drivetrain(self):
+        """Kurzfassung fuer die Uebersicht, z. B. '2x12 · 50/34 · 11-34'."""
+        if self.dt_front and self.dt_speeds:
+            head = f"{self.dt_front}{self.dt_speeds}"
+        elif self.dt_speeds:
+            head = f"{self.dt_speeds}-fach"
+        else:
+            head = self.dt_front
+        return " · ".join(p for p in (head, self.dt_rings, self.dt_cassette) if p)
 
 
 class Chain(db.Model):
@@ -124,7 +141,10 @@ with app.app_context():
     db.create_all()
     # create_all legt nur neue Tabellen an; neue Spalten hier nachziehen
     for table, col, ddl in (("bike", "photo", "VARCHAR(80)"), ("chain", "photo", "VARCHAR(80)"),
-                            ("bike", "retired", "BOOLEAN DEFAULT FALSE")):
+                            ("bike", "retired", "BOOLEAN DEFAULT FALSE"),
+                            ("bike", "dt_front", "VARCHAR(4)"), ("bike", "dt_speeds", "VARCHAR(4)"),
+                            ("bike", "dt_rings", "VARCHAR(80)"), ("bike", "dt_cassette", "VARCHAR(120)"),
+                            ("bike", "dt_group", "VARCHAR(120)"), ("bike", "dt_note", "VARCHAR(300)")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
     db.session.commit()
@@ -465,6 +485,22 @@ def chain_delete(chain_id):
     db.session.commit()
     flash("Kette gelöscht")
     return redirect(url_for("index"))
+
+
+@app.post("/bike/<int:bike_id>/drivetrain")
+def bike_drivetrain(bike_id):
+    bike = db.get_or_404(Bike, bike_id)
+    f = lambda k, n: request.form.get(k, "").strip()[:n]
+    front, speeds = f("dt_front", 4), f("dt_speeds", 4)
+    bike.dt_front = front if front in ("1x", "2x", "3x") else ""
+    bike.dt_speeds = speeds if speeds.isdigit() else ""
+    bike.dt_rings, bike.dt_cassette = f("dt_rings", 80), f("dt_cassette", 120)
+    bike.dt_group, bike.dt_note = f("dt_group", 120), f("dt_note", 300)
+    if not bike.strava_id and f("name", 120):  # Strava-Namen kaemen beim Abgleich zurueck
+        bike.name = f("name", 120)
+    db.session.commit()
+    flash("Antrieb gespeichert")
+    return redirect(url_for("bike_detail", bike_id=bike.id))
 
 
 @app.post("/bike/<int:bike_id>/retire")

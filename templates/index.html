@@ -30,6 +30,7 @@
       <span class="big">{{ "%.0f"|format(b.km) }} km</span>
     </div>
     <div class="mut">
+      {% if b.bike.drivetrain() %}{{ b.bike.drivetrain() }}<br>{% endif %}
       {{ b.chains|length }} {{ 'Kette' if b.chains|length == 1 else 'Ketten' }}
       {% if not b.bike.strava_id %} · manuell angelegt{% endif %}
     </div>

@@ -11,6 +11,42 @@
   {{ photo_form('bike', bike) }}
 </div>
 
+<h2>Antrieb</h2>
+<div class="card">
+  {% if bike.drivetrain() or bike.dt_group or bike.dt_note %}
+  <table>
+    {% if bike.dt_front or bike.dt_speeds %}<tr><td class="mut">Schaltung</td><td>{{ bike.dt_front }}{% if bike.dt_speeds %}{{ bike.dt_speeds if bike.dt_front else bike.dt_speeds ~ '-fach' }}{% endif %}</td></tr>{% endif %}
+    {% if bike.dt_rings %}<tr><td class="mut">Kettenblatt</td><td>{{ bike.dt_rings }}</td></tr>{% endif %}
+    {% if bike.dt_cassette %}<tr><td class="mut">Kassette</td><td>{{ bike.dt_cassette }}</td></tr>{% endif %}
+    {% if bike.dt_group %}<tr><td class="mut">Gruppe</td><td>{{ bike.dt_group }}</td></tr>{% endif %}
+    {% if bike.dt_note %}<tr><td class="mut">Notiz</td><td>{{ bike.dt_note }}</td></tr>{% endif %}
+  </table>
+  {% else %}
+  <p class="mut" style="margin:0">Noch nichts eingetragen.</p>
+  {% endif %}
+  <details style="margin-top:10px">
+    <summary class="mut" style="font-weight:400">Antrieb bearbeiten</summary>
+    <form method="post" action="{{ url_for('bike_drivetrain', bike_id=bike.id) }}" class="stack">
+      {% if not bike.strava_id %}<input name="name" value="{{ bike.name }}" placeholder="Name des Rads" required>{% endif %}
+      <div class="two">
+        <select name="dt_front">
+          <option value="">Kettenblätter …</option>
+          {% for v in ['1x', '2x', '3x'] %}<option value="{{ v }}" {% if bike.dt_front == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select>
+        <select name="dt_speeds">
+          <option value="">Gänge hinten …</option>
+          {% for v in range(7, 14) %}<option value="{{ v }}" {% if bike.dt_speeds == v|string %}selected{% endif %}>{{ v }}-fach</option>{% endfor %}
+        </select>
+      </div>
+      <input name="dt_rings" value="{{ bike.dt_rings or '' }}" placeholder="Kettenblatt, z. B. 50/34 oder 40">
+      <input name="dt_cassette" value="{{ bike.dt_cassette or '' }}" placeholder="Kassette, z. B. 11-34 Ultegra">
+      <input name="dt_group" value="{{ bike.dt_group or '' }}" placeholder="Schaltgruppe, z. B. Shimano 105 Di2">
+      <input name="dt_note" value="{{ bike.dt_note or '' }}" placeholder="Notiz, z. B. Kurbel 172,5 mm">
+      <button>Speichern</button>
+    </form>
+  </details>
+</div>
+
 <h2>Ketten dieses Rads</h2>
 {% for c in chains %}
   {{ chain_card(c) }}
