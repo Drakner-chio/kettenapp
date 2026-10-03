@@ -32,6 +32,12 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # Handyfotos
 
 
+# Teile des Antriebs; alle liegen in der Tabelle "chain"
+KINDS = {"chain": "Kette", "cassette": "Kassette", "chainring": "Kettenblatt"}
+KINDS_PLURAL = {"chain": "Ketten", "cassette": "Kassetten", "chainring": "Kettenblätter"}
+app.jinja_env.globals.update(KINDS=KINDS, KINDS_PLURAL=KINDS_PLURAL)
+
+
 # ---------------------------------------------------------------- Modelle
 
 class Bike(db.Model):
@@ -48,6 +54,13 @@ class Bike(db.Model):
     dt_group = db.Column(db.String(120))     # Schaltgruppe
     dt_note = db.Column(db.String(300))
 
+    def mounted(self, kind):
+        """Aktuell montiertes Teil dieser Art (oder None)."""
+        for m in Mount.query.filter_by(bike_id=self.id, end_day=None):
+            if m.chain.k == kind:
+                return m.chain
+        return None
+
     def drivetrain(self):
         """Kurzfassung fuer die Uebersicht, z. B. '2x12 · 50/34 · 11-34'."""
         if self.dt_front and self.dt_speeds:
@@ -56,7 +69,8 @@ class Bike(db.Model):
             head = f"{self.dt_speeds}-fach"
         else:
             head = self.dt_front
-        return " · ".join(p for p in (head, self.dt_rings, self.dt_cassette) if p)
+        ring, cas = self.mounted("chainring"), self.mounted("cassette")
+        return " · ".join(p for p in (head, ring and ring.name, cas and cas.name) if p)
 
 
 class Chain(db.Model):
@@ -67,6 +81,8 @@ class Chain(db.Model):
     wear_limit = db.Column(db.Float, default=0.75)  # Wechselgrenze in %
     retired = db.Column(db.Boolean, default=False)
     photo = db.Column(db.String(80))
+    kind = db.Column(db.String(12), default="chain")  # Schluessel aus KINDS
+    swap_km = db.Column(db.Float, default=1000)       # Kette: Wechsel nach so vielen km seit Montage
     mounts = db.relationship("Mount", backref="chain", order_by="(Mount.start_day, Mount.id)")
     checks = db.relationship("WearCheck", backref="chain", order_by="WearCheck.day")
 
@@ -76,13 +92,29 @@ class Chain(db.Model):
     def last_wear(self):
         return self.checks[-1] if self.checks else None
 
+    @property
+    def k(self):
+        return self.kind if self.kind in KINDS else "chain"
+
+    def since_mount(self):
+        """km seit der aktuellen Montage; None, wenn nicht montiert."""
+        m = self.current_mount()
+        return m.km() if m else None
+
     def status(self):
+        """Nur Ketten haben eine Ampel; andere Teile zeigen nur ihre Kilometer."""
+        if self.k != "chain":
+            return ""
         w = self.last_wear()
-        if not w:
-            return "unbekannt"
-        if w.percent >= self.wear_limit:
-            return "wechseln"
-        if w.percent >= self.wear_limit - 0.25:
+        if w and w.percent >= self.wear_limit:
+            return "verschlissen"
+        done, limit = self.since_mount(), self.swap_km or 0
+        if limit and done is not None:
+            if done >= limit:
+                return "wechseln"
+            if done >= 0.8 * limit:
+                return "bald"
+        if w and w.percent >= self.wear_limit - 0.25:
             return "bald"
         return "ok"
 
@@ -144,7 +176,9 @@ with app.app_context():
                             ("bike", "retired", "BOOLEAN DEFAULT FALSE"),
                             ("bike", "dt_front", "VARCHAR(4)"), ("bike", "dt_speeds", "VARCHAR(4)"),
                             ("bike", "dt_rings", "VARCHAR(80)"), ("bike", "dt_cassette", "VARCHAR(120)"),
-                            ("bike", "dt_group", "VARCHAR(120)"), ("bike", "dt_note", "VARCHAR(300)")):
+                            ("bike", "dt_group", "VARCHAR(120)"), ("bike", "dt_note", "VARCHAR(300)"),
+                            ("chain", "kind", "VARCHAR(12) DEFAULT 'chain'"),
+                            ("chain", "swap_km", "FLOAT DEFAULT 1000")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
     db.session.commit()
@@ -367,7 +401,7 @@ def index():
             retired_bikes.append(b)
             continue
         own = [c for c in chains if c.home_bike() and c.home_bike().id == b.id]
-        own.sort(key=lambda c: c.current_mount() is None)  # montierte Kette zuerst
+        own.sort(key=lambda c: (list(KINDS).index(c.k), c.current_mount() is None))
         bikes.append({"bike": b, "km": bike_km(b.id), "chains": own})
     # Ketten, die noch nie montiert waren oder deren Rad im Ruhestand ist
     loose = [c for c in chains if not c.home_bike() or c.home_bike().retired]
@@ -383,7 +417,13 @@ def bike_detail(bike_id):
     chains = [c for c in Chain.query.order_by(Chain.name)
               if c.home_bike() and c.home_bike().id == bike.id]
     chains.sort(key=lambda c: (bool(c.retired), c.current_mount() is None))
-    return render_template("bike.html", bike=bike, km=bike_km(bike.id), chains=chains)
+    chains = {k: [c for c in chains if c.k == k] for k in KINDS}
+    # Zusammenfuehren: nur fuer manuelle Raeder, Ziel ist ein von Strava angelegtes Rad
+    strava_bikes = [] if bike.strava_id else Bike.query.filter(Bike.strava_id.isnot(None)).order_by(Bike.name).all()
+    manual = (Ride.query.filter_by(bike_id=bike.id, strava_id=None)
+              .order_by(Ride.day.desc(), Ride.id.desc()).limit(100).all())
+    return render_template("bike.html", bike=bike, km=bike_km(bike.id), chains=chains,
+                           strava_bikes=strava_bikes, manual=manual)
 
 
 @app.get("/photo/<name>")
@@ -424,8 +464,11 @@ def chain_add():
     name = request.form.get("name", "").strip()
     if not name:
         return redirect(url_for("index"))
+    kind = request.form.get("kind", "chain")
     chain = Chain(name=name, model=request.form.get("model", "").strip(),
+                  kind=kind if kind in KINDS else "chain",
                   initial_km=form_float("initial_km"),
+                  swap_km=form_float("swap_km", 1000),
                   wear_limit=form_float("wear_limit", 0.75) or 0.75)
     db.session.add(chain)
     db.session.commit()
@@ -440,7 +483,9 @@ def chain_mount(chain_id):
     day = form_day()
     for m in Mount.query.filter(Mount.end_day.is_(None),
                                 (Mount.chain_id == chain.id) | (Mount.bike_id == bike.id)):
-        m.end_day = max(day, m.start_day)
+        # am Rad nur das Teil derselben Art abloesen (Kette gegen Kette usw.)
+        if m.chain_id == chain.id or m.chain.k == chain.k:
+            m.end_day = max(day, m.start_day)
     db.session.add(Mount(chain_id=chain.id, bike_id=bike.id, start_day=day))
     chain.retired = False
     db.session.commit()
@@ -459,6 +504,22 @@ def chain_unmount(chain_id):
     if request.form.get("retire") == "1":
         chain.retired = True
     db.session.commit()
+    return redirect(url_for("chain_detail", chain_id=chain.id))
+
+
+@app.post("/chain/<int:chain_id>/edit")
+def chain_edit(chain_id):
+    chain = db.get_or_404(Chain, chain_id)
+    name = request.form.get("name", "").strip()[:120]
+    if name:
+        chain.name = name
+    chain.model = request.form.get("model", "").strip()[:120]
+    chain.initial_km = form_float("initial_km", chain.initial_km or 0)
+    if chain.k == "chain":
+        chain.swap_km = form_float("swap_km", chain.swap_km or 0)
+        chain.wear_limit = form_float("wear_limit", chain.wear_limit) or 0.75
+    db.session.commit()
+    flash("Gespeichert")
     return redirect(url_for("chain_detail", chain_id=chain.id))
 
 
@@ -483,7 +544,7 @@ def chain_delete(chain_id):
     remove_photo(chain)
     db.session.delete(chain)
     db.session.commit()
-    flash("Kette gelöscht")
+    flash("Teil gelöscht")
     return redirect(url_for("index"))
 
 
@@ -500,6 +561,31 @@ def bike_drivetrain(bike_id):
         bike.name = f("name", 120)
     db.session.commit()
     flash("Antrieb gespeichert")
+    return redirect(url_for("bike_detail", bike_id=bike.id))
+
+
+@app.post("/bike/<int:bike_id>/merge")
+def bike_merge(bike_id):
+    """Manuelles Rad mit seinem Strava-Rad zusammenfuehren.
+
+    Das manuelle Rad bleibt bestehen (mit Ketten, Teilen, Foto, Antrieb) und
+    uebernimmt die Strava-Kennung und alle Strava-Fahrten.
+    """
+    bike = db.get_or_404(Bike, bike_id)
+    src = db.get_or_404(Bike, int(request.form["strava_bike_id"]))
+    if bike.strava_id or not src.strava_id or src.id == bike.id:
+        abort(400)
+    if request.form.get("drop_manual") == "1":
+        Ride.query.filter_by(bike_id=bike.id, strava_id=None).delete(synchronize_session=False)
+    Ride.query.filter_by(bike_id=src.id).update({"bike_id": bike.id}, synchronize_session=False)
+    Mount.query.filter_by(bike_id=src.id).update({"bike_id": bike.id}, synchronize_session=False)
+    sid, name = src.strava_id, src.name
+    remove_photo(src)
+    db.session.delete(src)
+    db.session.flush()  # Strava-Kennung ist eindeutig: erst freigeben, dann vergeben
+    bike.strava_id, bike.name = sid, name
+    db.session.commit()
+    flash(f"Mit Strava-Rad {name} zusammengeführt")
     return redirect(url_for("bike_detail", bike_id=bike.id))
 
 
@@ -555,7 +641,10 @@ def ride_add():
 @app.post("/ride/<int:ride_id>/delete")
 def ride_delete(ride_id):
     ride = db.get_or_404(Ride, ride_id)
+    bike_id = ride.bike_id
     if ride.strava_id is None:  # Strava-Fahrten kaemen beim Abgleich zurueck
         db.session.delete(ride)
         db.session.commit()
+    if request.form.get("back") == "bike":
+        return redirect(url_for("bike_detail", bike_id=bike_id))
     return redirect(url_for("index"))

@@ -8,24 +8,13 @@
     <strong>{{ bike.name }}{% if bike.retired %} <span class="badge">im Ruhestand</span>{% endif %}</strong>
     <span class="big">{{ "%.0f"|format(km) }} km</span>
   </div>
-  {{ photo_form('bike', bike) }}
-</div>
-
-<h2>Antrieb</h2>
-<div class="card">
-  {% if bike.drivetrain() or bike.dt_group or bike.dt_note %}
-  <table>
-    {% if bike.dt_front or bike.dt_speeds %}<tr><td class="mut">Schaltung</td><td>{{ bike.dt_front }}{% if bike.dt_speeds %}{{ bike.dt_speeds if bike.dt_front else bike.dt_speeds ~ '-fach' }}{% endif %}</td></tr>{% endif %}
-    {% if bike.dt_rings %}<tr><td class="mut">Kettenblatt</td><td>{{ bike.dt_rings }}</td></tr>{% endif %}
-    {% if bike.dt_cassette %}<tr><td class="mut">Kassette</td><td>{{ bike.dt_cassette }}</td></tr>{% endif %}
-    {% if bike.dt_group %}<tr><td class="mut">Gruppe</td><td>{{ bike.dt_group }}</td></tr>{% endif %}
-    {% if bike.dt_note %}<tr><td class="mut">Notiz</td><td>{{ bike.dt_note }}</td></tr>{% endif %}
-  </table>
-  {% else %}
-  <p class="mut" style="margin:0">Noch nichts eingetragen.</p>
-  {% endif %}
-  <details style="margin-top:10px">
-    <summary class="mut" style="font-weight:400">Antrieb bearbeiten</summary>
+  <div class="mut">
+    {{ bike.drivetrain() }}
+    {% if bike.dt_group %}{% if bike.drivetrain() %} · {% endif %}{{ bike.dt_group }}{% endif %}
+    {% if bike.dt_note %}<br>{{ bike.dt_note }}{% endif %}
+  </div>
+  <details style="margin-top:8px">
+    <summary class="mut" style="font-weight:400">Rad bearbeiten</summary>
     <form method="post" action="{{ url_for('bike_drivetrain', bike_id=bike.id) }}" class="stack">
       {% if not bike.strava_id %}<input name="name" value="{{ bike.name }}" placeholder="Name des Rads" required>{% endif %}
       <div class="two">
@@ -38,29 +27,67 @@
           {% for v in range(7, 14) %}<option value="{{ v }}" {% if bike.dt_speeds == v|string %}selected{% endif %}>{{ v }}-fach</option>{% endfor %}
         </select>
       </div>
-      <input name="dt_rings" value="{{ bike.dt_rings or '' }}" placeholder="Kettenblatt, z. B. 50/34 oder 40">
-      <input name="dt_cassette" value="{{ bike.dt_cassette or '' }}" placeholder="Kassette, z. B. 11-34 Ultegra">
       <input name="dt_group" value="{{ bike.dt_group or '' }}" placeholder="Schaltgruppe, z. B. Shimano 105 Di2">
       <input name="dt_note" value="{{ bike.dt_note or '' }}" placeholder="Notiz, z. B. Kurbel 172,5 mm">
       <button>Speichern</button>
     </form>
   </details>
+  {{ photo_form('bike', bike) }}
 </div>
 
-<h2>Ketten dieses Rads</h2>
-{% for c in chains %}
+{% for kind, parts in chains.items() %}
+<h2>{{ KINDS_PLURAL[kind] }}</h2>
+{% for c in parts %}
   {{ chain_card(c) }}
-  {% if not c.retired and not c.current_mount() %}
+  {% if not c.retired and not c.current_mount() and not bike.retired %}
   <form method="post" action="{{ url_for('chain_mount', chain_id=c.id) }}" style="margin:-4px 0 14px">
     <input type="hidden" name="bike_id" value="{{ bike.id }}">
     <input type="hidden" name="day" value="{{ today }}">
     <input type="hidden" name="back" value="bike">
-    <button class="plain">↑ heute montieren (wechselt die aktuelle Kette aus)</button>
+    <button class="plain">↑ heute montieren</button>
   </form>
   {% endif %}
 {% else %}
-<p class="mut">Noch keine Kette. Lege auf der Startseite eine an und montiere sie an dieses Rad.</p>
+<p class="mut">Noch nichts eingetragen. Lege das Teil auf der Startseite an und montiere es an dieses Rad.</p>
 {% endfor %}
+{% endfor %}
+
+{% if manual %}
+<h2>Von Hand eingetragene Kilometer</h2>
+<div class="card">
+  <table>
+    {% for r in manual %}
+    <tr>
+      <td>{{ r.day.strftime('%d.%m.%y') }}</td>
+      <td>{{ r.note }}</td>
+      <td class="num">{{ "%g"|format(r.km) }} km</td>
+      <td class="num">
+        <form method="post" action="{{ url_for('ride_delete', ride_id=r.id) }}"
+              onsubmit="return confirm('Eintrag löschen?')">
+          <input type="hidden" name="back" value="bike"><button class="plain">✕</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if strava_bikes %}
+<h2>Mit Strava zusammenführen</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('bike_merge', bike_id=bike.id) }}" class="stack" style="margin-top:0"
+        onsubmit="return confirm('Räder zusammenführen? Das lässt sich nicht rückgängig machen.')">
+    <select name="strava_bike_id" required>
+      <option value="">Strava-Rad wählen …</option>
+      {% for b in strava_bikes %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+    </select>
+    <label class="mut"><input type="checkbox" name="drop_manual" value="1" style="width:auto">
+      von Hand eingetragene Kilometer dieses Rads löschen (weil dieselben Fahrten in Strava stehen)</label>
+    <button>Zusammenführen</button>
+    <span class="mut">Dieses Rad behält Ketten, Teile, Foto und Antrieb und bekommt alle Strava-Fahrten. Das doppelte Strava-Rad verschwindet, der Name kommt künftig aus Strava.</span>
+  </form>
+</div>
+{% endif %}
 
 <h2>Verwaltung</h2>
 <div class="card">
@@ -70,11 +97,11 @@
     </form>
     {% if not bike.strava_id %}
     <form method="post" action="{{ url_for('bike_delete', bike_id=bike.id) }}"
-          onsubmit="return confirm('Rad endgültig löschen? Alle eingetragenen Kilometer dieses Rads gehen verloren, auch bei seinen Ketten.')">
+          onsubmit="return confirm('Rad endgültig löschen? Alle eingetragenen Kilometer dieses Rads gehen verloren, auch bei seinen Ketten und Teilen.')">
       <button class="plain" style="width:100%;color:#cf222e">Löschen</button>
     </form>
     {% endif %}
   </div>
-  <p class="mut" style="margin:10px 0 0">Im Ruhestand bleiben Rad, Kilometer und Ketten erhalten. Das Rad verschwindet nur aus der Übersicht und der Kilometer-Eingabe.</p>
+  <p class="mut" style="margin:10px 0 0">Im Ruhestand bleiben Rad, Kilometer und Teile erhalten. Das Rad verschwindet nur aus der Übersicht und der Kilometer-Eingabe.</p>
 </div>
 {% endblock %}
