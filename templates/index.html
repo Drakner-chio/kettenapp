@@ -42,7 +42,7 @@
 {% endfor %}
 
 {% if loose %}
-<h2>Ketten ohne Rad</h2>
+<h2>Ketten ohne aktives Rad</h2>
 {% for c in loose %}{{ chain_card(c) }}{% endfor %}
 {% endif %}
 
@@ -60,6 +60,23 @@
     </form>
   </details>
 </div>
+
+{% if retired_bikes or retired_chains %}
+<div class="card">
+  <details>
+    <summary>Im Ruhestand ({{ retired_bikes|length + retired_chains|length }})</summary>
+    <table style="margin-top:10px">
+      {% for b in retired_bikes %}
+      <tr><td>Rad</td><td><a href="{{ url_for('bike_detail', bike_id=b.id) }}">{{ b.name }}</a></td></tr>
+      {% endfor %}
+      {% for c in retired_chains %}
+      <tr><td>Kette</td><td><a href="{{ url_for('chain_detail', chain_id=c.id) }}">{{ c.name }}</a>
+        <span class="mut">· {{ "%.0f"|format(c.km()) }} km</span></td></tr>
+      {% endfor %}
+    </table>
+  </details>
+</div>
+{% endif %}
 
 {% if manual %}
 <h2>Letzte manuelle Einträge</h2>

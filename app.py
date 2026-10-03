@@ -39,6 +39,7 @@ class Bike(db.Model):
     strava_id = db.Column(db.String(32), unique=True)  # None = manuell angelegt
     name = db.Column(db.String(120), nullable=False)
     photo = db.Column(db.String(80))
+    retired = db.Column(db.Boolean, default=False)
 
 
 class Chain(db.Model):
@@ -122,9 +123,10 @@ class Token(db.Model):
 with app.app_context():
     db.create_all()
     # create_all legt nur neue Tabellen an; neue Spalten hier nachziehen
-    for table in ("bike", "chain"):
-        if "photo" not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
-            db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN photo VARCHAR(80)"))
+    for table, col, ddl in (("bike", "photo", "VARCHAR(80)"), ("chain", "photo", "VARCHAR(80)"),
+                            ("bike", "retired", "BOOLEAN DEFAULT FALSE")):
+        if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
+            db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
     db.session.commit()
 
 
@@ -337,16 +339,22 @@ def strava_sync_now():
 @app.get("/")
 def index():
     auto_sync()
-    chains = [c for c in Chain.query.order_by(Chain.name) if not c.retired]
-    bikes = []
+    all_chains = Chain.query.order_by(Chain.name).all()
+    chains = [c for c in all_chains if not c.retired]
+    bikes, retired_bikes = [], []
     for b in Bike.query.order_by(Bike.name):
+        if b.retired:
+            retired_bikes.append(b)
+            continue
         own = [c for c in chains if c.home_bike() and c.home_bike().id == b.id]
         own.sort(key=lambda c: c.current_mount() is None)  # montierte Kette zuerst
         bikes.append({"bike": b, "km": bike_km(b.id), "chains": own})
-    loose = [c for c in chains if not c.mounts]
+    # Ketten, die noch nie montiert waren oder deren Rad im Ruhestand ist
+    loose = [c for c in chains if not c.home_bike() or c.home_bike().retired]
     manual = Ride.query.filter_by(strava_id=None).order_by(Ride.day.desc(), Ride.id.desc()).limit(10).all()
     return render_template("index.html", bikes=bikes, loose=loose, manual=manual,
-                           all_bikes=[b["bike"] for b in bikes])
+                           all_bikes=[b["bike"] for b in bikes], retired_bikes=retired_bikes,
+                           retired_chains=[c for c in all_chains if c.retired])
 
 
 @app.get("/bike/<int:bike_id>")
@@ -378,7 +386,8 @@ def photo_set(kind, obj_id):
 @app.get("/chain/<int:chain_id>")
 def chain_detail(chain_id):
     chain = db.get_or_404(Chain, chain_id)
-    return render_template("chain.html", chain=chain, bikes=Bike.query.order_by(Bike.name).all())
+    bikes = [b for b in Bike.query.order_by(Bike.name) if not b.retired]
+    return render_template("chain.html", chain=chain, bikes=bikes)
 
 
 @app.post("/bike")
@@ -431,6 +440,59 @@ def chain_unmount(chain_id):
         chain.retired = True
     db.session.commit()
     return redirect(url_for("chain_detail", chain_id=chain.id))
+
+
+@app.post("/chain/<int:chain_id>/retire")
+def chain_retire(chain_id):
+    """Kette in den Ruhestand schicken oder zurueckholen."""
+    chain = db.get_or_404(Chain, chain_id)
+    chain.retired = not chain.retired
+    if chain.retired:
+        for m in chain.mounts:
+            if m.end_day is None:
+                m.end_day = max(date.today(), m.start_day)
+    db.session.commit()
+    return redirect(url_for("chain_detail", chain_id=chain.id))
+
+
+@app.post("/chain/<int:chain_id>/delete")
+def chain_delete(chain_id):
+    chain = db.get_or_404(Chain, chain_id)
+    for obj in list(chain.mounts) + list(chain.checks):
+        db.session.delete(obj)
+    remove_photo(chain)
+    db.session.delete(chain)
+    db.session.commit()
+    flash("Kette gelöscht")
+    return redirect(url_for("index"))
+
+
+@app.post("/bike/<int:bike_id>/retire")
+def bike_retire(bike_id):
+    """Rad in den Ruhestand schicken oder zurueckholen."""
+    bike = db.get_or_404(Bike, bike_id)
+    bike.retired = not bike.retired
+    if bike.retired:
+        for m in Mount.query.filter_by(bike_id=bike.id, end_day=None):
+            m.end_day = max(date.today(), m.start_day)
+    db.session.commit()
+    return redirect(url_for("bike_detail", bike_id=bike.id))
+
+
+@app.post("/bike/<int:bike_id>/delete")
+def bike_delete(bike_id):
+    bike = db.get_or_404(Bike, bike_id)
+    if bike.strava_id:  # kaeme beim naechsten Abgleich zurueck
+        flash("Strava-Räder lassen sich nur in den Ruhestand schicken")
+        return redirect(url_for("bike_detail", bike_id=bike.id))
+    name = bike.name
+    Ride.query.filter_by(bike_id=bike.id).delete(synchronize_session=False)
+    Mount.query.filter_by(bike_id=bike.id).delete(synchronize_session=False)
+    remove_photo(bike)
+    db.session.delete(bike)
+    db.session.commit()
+    flash(f"Rad {name} gelöscht")
+    return redirect(url_for("index"))
 
 
 @app.post("/chain/<int:chain_id>/wear")

@@ -82,4 +82,17 @@
   </table>
   {% endif %}
 </div>
+<h2>Verwaltung</h2>
+<div class="card">
+  <div class="two">
+    <form method="post" action="{{ url_for('chain_retire', chain_id=chain.id) }}">
+      <button class="plain" style="width:100%">{{ 'Aus dem Ruhestand holen' if chain.retired else 'In den Ruhestand' }}</button>
+    </form>
+    <form method="post" action="{{ url_for('chain_delete', chain_id=chain.id) }}"
+          onsubmit="return confirm('Kette mit allen Messungen und Montagen endgültig löschen?')">
+      <button class="plain" style="width:100%;color:#cf222e">Löschen</button>
+    </form>
+  </div>
+  <p class="mut" style="margin:10px 0 0">Im Ruhestand bleibt die Kette mit ihrer Historie erhalten und verschwindet nur aus der Übersicht.</p>
+</div>
 {% endblock %}

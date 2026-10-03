@@ -5,7 +5,7 @@
 <div class="card">
   {% if bike.photo %}<img class="photo" src="{{ url_for('photo', name=bike.photo) }}" alt="{{ bike.name }}">{% endif %}
   <div class="row">
-    <strong>{{ bike.name }}</strong>
+    <strong>{{ bike.name }}{% if bike.retired %} <span class="badge">im Ruhestand</span>{% endif %}</strong>
     <span class="big">{{ "%.0f"|format(km) }} km</span>
   </div>
   {{ photo_form('bike', bike) }}
@@ -25,4 +25,20 @@
 {% else %}
 <p class="mut">Noch keine Kette. Lege auf der Startseite eine an und montiere sie an dieses Rad.</p>
 {% endfor %}
+
+<h2>Verwaltung</h2>
+<div class="card">
+  <div class="two">
+    <form method="post" action="{{ url_for('bike_retire', bike_id=bike.id) }}">
+      <button class="plain" style="width:100%">{{ 'Aus dem Ruhestand holen' if bike.retired else 'In den Ruhestand' }}</button>
+    </form>
+    {% if not bike.strava_id %}
+    <form method="post" action="{{ url_for('bike_delete', bike_id=bike.id) }}"
+          onsubmit="return confirm('Rad endgültig löschen? Alle eingetragenen Kilometer dieses Rads gehen verloren, auch bei seinen Ketten.')">
+      <button class="plain" style="width:100%;color:#cf222e">Löschen</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="mut" style="margin:10px 0 0">Im Ruhestand bleiben Rad, Kilometer und Ketten erhalten. Das Rad verschwindet nur aus der Übersicht und der Kilometer-Eingabe.</p>
+</div>
 {% endblock %}
