@@ -181,7 +181,9 @@ with app.app_context():
                             ("chain", "swap_km", "FLOAT DEFAULT 1000")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
-    db.session.commit()
+            # sofort abschliessen: eine offene Aenderung sperrt die Tabelle und
+            # wuerde die naechste Spaltenpruefung endlos warten lassen
+            db.session.commit()
 
 
 # ---------------------------------------------------------------- Helfer
