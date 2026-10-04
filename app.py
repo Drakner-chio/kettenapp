@@ -85,6 +85,19 @@ class Chain(db.Model):
     kind = db.Column(db.String(12), default="chain")  # Schluessel aus KINDS
     swap_km = db.Column(db.Float, default=1000)       # Kette: Wechsel nach so vielen km seit Montage
     shop_url = db.Column(db.String(500))              # Link zum Artikel im Shop
+    bought = db.Column(db.Date)                       # Kaufdatum
+    speeds = db.Column(db.String(4))                  # passt zu so vielen Gaengen hinten, z. B. "12"
+    note = db.Column(db.String(300))
+
+    def is_new(self):
+        """Noch nie montiert und ohne Vorkilometer."""
+        return not self.mounts and not self.initial_km
+
+    def fits(self, bike):
+        """True/False, wenn beide Seiten die Gangzahl kennen, sonst None (unbekannt)."""
+        if not (self.speeds and bike.dt_speeds):
+            return None
+        return self.speeds == bike.dt_speeds
 
     def shop_search(self):
         """Suchlink fuer Teile ohne hinterlegten Artikel."""
@@ -192,7 +205,9 @@ with app.app_context():
                             ("chain", "kind", "VARCHAR(12) DEFAULT 'chain'"),
                             ("chain", "swap_km", "FLOAT DEFAULT 1000"),
                             ("chain", "shop_url", "VARCHAR(500)"),
-                            ("mount", "notified", "INTEGER DEFAULT 0")):
+                            ("mount", "notified", "INTEGER DEFAULT 0"),
+                            ("chain", "bought", "DATE"), ("chain", "speeds", "VARCHAR(4)"),
+                            ("chain", "note", "VARCHAR(300)")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             # sofort abschliessen: eine offene Aenderung sperrt die Tabelle und
@@ -209,6 +224,18 @@ def form_day(field="day"):
         return date.fromisoformat(request.form.get(field, ""))
     except ValueError:
         return date.today()
+
+
+def form_date_opt(field):
+    try:
+        return date.fromisoformat(request.form.get(field, ""))
+    except ValueError:
+        return None
+
+
+def form_speeds():
+    v = request.form.get("speeds", "").strip()
+    return v if v.isdigit() and len(v) <= 2 else ""
 
 
 def form_url(field="shop_url"):
@@ -555,6 +582,8 @@ def chain_add():
     kind = request.form.get("kind", "chain")
     chain = Chain(name=name, model=request.form.get("model", "").strip(),
                   kind=kind if kind in KINDS else "chain",
+                  bought=form_date_opt("bought"), speeds=form_speeds(), shop_url=form_url(),
+                  note=request.form.get("note", "").strip()[:300],
                   initial_km=form_float("initial_km"),
                   swap_km=form_float("swap_km", 1000),
                   wear_limit=form_float("wear_limit", 0.75) or 0.75)
@@ -566,6 +595,9 @@ def chain_add():
         mount_part(chain, bike, form_day())
         db.session.commit()
         return redirect(url_for("bike_detail", bike_id=bike.id))
+    if request.form.get("back") == "stock":
+        flash(f"{KINDS[chain.k]} {chain.name} ins Lager gelegt")
+        return redirect(url_for("stock"))
     return redirect(url_for("chain_detail", chain_id=chain.id))
 
 
@@ -613,6 +645,8 @@ def chain_edit(chain_id):
     chain.model = request.form.get("model", "").strip()[:120]
     chain.initial_km = form_float("initial_km", chain.initial_km or 0)
     chain.shop_url = form_url()
+    chain.bought, chain.speeds = form_date_opt("bought"), form_speeds()
+    chain.note = request.form.get("note", "").strip()[:300]
     if chain.k == "chain":
         chain.swap_km = form_float("swap_km", chain.swap_km or 0)
         chain.wear_limit = form_float("wear_limit", chain.wear_limit) or 0.75
@@ -645,6 +679,21 @@ def settings_ntfy():
             db.session.rollback()
             flash(f"Gespeichert, aber die Testnachricht ging nicht raus: {e}")
     return redirect(url_for("settings"))
+
+
+@app.get("/lager")
+def stock():
+    """Lager: alle Teile, die gerade an keinem Rad montiert sind."""
+    bikes = [b for b in Bike.query.order_by(Bike.name) if not b.retired]
+    sel = db.session.get(Bike, request.args.get("bike", type=int) or 0)
+    parts = [c for c in Chain.query.order_by(Chain.name) if not c.retired and not c.current_mount()]
+    if sel:
+        parts = [c for c in parts if c.fits(sel) is not False]
+    # neue Teile zuerst, darunter das zuletzt gekaufte oben
+    parts.sort(key=lambda c: (not c.is_new(), -(c.bought.toordinal() if c.bought else 0)))
+    groups = {k: [c for c in parts if c.k == k] for k in KINDS}
+    fit = {c.id: [b for b in bikes if c.fits(b)] for c in parts}
+    return render_template("stock.html", groups=groups, bikes=bikes, sel=sel, fit=fit, total=len(parts))
 
 
 @app.get("/shop")

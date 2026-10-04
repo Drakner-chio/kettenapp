@@ -66,6 +66,7 @@
   {% if session.get('ok') %}
   <nav>
     <a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="on"{% endif %}>Übersicht</a>
+    <a href="{{ url_for('stock') }}" {% if request.endpoint == 'stock' %}class="on"{% endif %}>Lager</a>
     <a href="{{ url_for('shop') }}" {% if request.endpoint == 'shop' %}class="on"{% endif %}>Ersatzteile</a>
     <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="on"{% endif %}>Einstellungen</a>
   </nav>

@@ -35,6 +35,8 @@
   {{ photo_form('bike', bike) }}
 </div>
 
+<a class="btn plain" href="{{ url_for('stock', bike=bike.id) }}">Passende Teile im Lager ansehen</a>
+
 {% for kind, parts in chains.items() %}
 <h2>{{ KINDS_PLURAL[kind] }}</h2>
 {% for c in parts %}

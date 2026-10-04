@@ -23,6 +23,9 @@
     {% if chain.retired %}im Ruhestand{% elif cur %}montiert{% else %}nicht montiert{% endif %}
     {% if chain.home_bike() %} · <a href="{{ url_for('bike_detail', bike_id=chain.home_bike().id) }}">{{ chain.home_bike().name }}</a>{% endif %}
     {% if is_chain %} · Verschleißgrenze {{ "%.2f"|format(chain.wear_limit) }} %{% endif %}
+    {% if chain.speeds %} · {{ chain.speeds }}-fach{% endif %}
+    {% if chain.bought %} · gekauft am {{ chain.bought.strftime('%d.%m.%Y') }}{% endif %}
+    {% if chain.note %}<br>{{ chain.note }}{% endif %}
   </div>
   <details style="margin-top:8px">
     <summary class="mut" style="font-weight:400">Bearbeiten</summary>
@@ -31,6 +34,16 @@
       <input name="model" value="{{ chain.model or '' }}" placeholder="Modell (optional)">
       <label class="mut">km vor der Aufzeichnung
         <input name="initial_km" inputmode="decimal" value="{{ '%g'|format(chain.initial_km or 0) }}"></label>
+      <div class="two">
+        <label class="mut">gekauft am
+          <input type="date" name="bought" value="{{ chain.bought.isoformat() if chain.bought else '' }}"></label>
+        <label class="mut">passt zu
+          <select name="speeds">
+            <option value="">Gänge unbekannt</option>
+            {% for v in range(7, 14) %}<option value="{{ v }}" {% if chain.speeds == v|string %}selected{% endif %}>{{ v }}-fach</option>{% endfor %}
+          </select></label>
+      </div>
+      <input name="note" value="{{ chain.note or '' }}" placeholder="Notiz, z. B. gewachst, Lagerort">
       <label class="mut">Link zum Artikel im Shop (z. B. bike24)
         <input name="shop_url" type="url" value="{{ chain.shop_url or '' }}" placeholder="https://www.bike24.de/p…"></label>
       {% if is_chain %}

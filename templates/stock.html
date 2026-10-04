@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Lager</h2>
+<div class="card">
+  <form method="get" class="stack" style="margin-top:0">
+    <select name="bike" onchange="this.form.submit()">
+      <option value="">Alle Teile anzeigen</option>
+      {% for b in bikes %}<option value="{{ b.id }}" {% if sel and sel.id == b.id %}selected{% endif %}>Passend für {{ b.name }}{% if b.dt_speeds %} ({{ b.dt_speeds }}-fach){% endif %}</option>{% endfor %}
+    </select>
+  </form>
+  <p class="mut" style="margin:10px 0 0">
+    {{ total }} {{ 'Teil' if total == 1 else 'Teile' }} nicht montiert.
+    {% if sel and not sel.dt_speeds %}Bei {{ sel.name }} ist die Gangzahl nicht eingetragen, deshalb lässt sich nicht filtern.{% endif %}
+  </p>
+</div>
+
+{% for kind, parts in groups.items() %}
+<h2>{{ KINDS_PLURAL[kind] }}</h2>
+{% for c in parts %}
+<div class="card">
+  <div class="row">
+    <strong><a href="{{ url_for('chain_detail', chain_id=c.id) }}" style="color:inherit;text-decoration:none">{{ c.name }}</a></strong>
+    {% if c.is_new() %}<span class="badge ok">neu</span>
+    {% else %}<span class="badge">gebraucht · {{ "%.0f"|format(c.km()) }} km</span>{% endif %}
+  </div>
+  <div class="mut">
+    {% if c.model %}{{ c.model }} · {% endif %}
+    {{ c.speeds ~ '-fach' if c.speeds else 'Gänge nicht eingetragen' }}
+    {% if c.bought %} · gekauft am {{ c.bought.strftime('%d.%m.%Y') }}{% endif %}
+    {% if c.last_wear() %} · Längung {{ "%.2f"|format(c.last_wear().percent) }} %{% endif %}
+    {% if c.home_bike() %}<br>zuletzt an {{ c.home_bike().name }}{% endif %}
+    {% if fit[c.id] %}<br>passt zu: {{ fit[c.id]|map(attribute='name')|join(', ') }}{% endif %}
+    {% if c.note %}<br>{{ c.note }}{% endif %}
+  </div>
+  {% if bikes %}
+  <form method="post" action="{{ url_for('chain_mount', chain_id=c.id) }}" class="two" style="margin-top:10px">
+    <input type="hidden" name="day" value="{{ today }}">
+    <input type="hidden" name="back" value="bike">
+    <select name="bike_id">
+      {% for b in bikes %}<option value="{{ b.id }}" {% if (sel and sel.id == b.id) or (not sel and c.home_bike() and c.home_bike().id == b.id) %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+    </select>
+    <button class="plain" style="width:100%">heute montieren</button>
+  </form>
+  {% endif %}
+</div>
+{% else %}
+<p class="mut">Nichts auf Lager.</p>
+{% endfor %}
+{% endfor %}
+
+<h2>Neues Teil ins Lager</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('chain_add') }}" class="stack" style="margin-top:0">
+    <input type="hidden" name="back" value="stock">
+    <div class="two">
+      <select name="kind" onchange="this.form.querySelector('.only-chain').hidden = this.value != 'chain'">
+        {% for k, label in KINDS.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+      </select>
+      <select name="speeds">
+        <option value="">passt zu … Gängen</option>
+        {% for v in range(7, 14) %}<option value="{{ v }}" {% if sel and sel.dt_speeds == v|string %}selected{% endif %}>{{ v }}-fach</option>{% endfor %}
+      </select>
+    </div>
+    <input name="name" placeholder="Name, z. B. Kette C oder Kassette 11-30" required>
+    <input name="model" placeholder="Modell, z. B. Shimano CN-M8100 (optional)">
+    <div class="two">
+      <label class="mut">gekauft am <input type="date" name="bought" value="{{ today }}"></label>
+      <label class="mut">bisherige km (leer = neu) <input name="initial_km" inputmode="decimal"></label>
+    </div>
+    <div class="two only-chain">
+      <input name="swap_km" inputmode="decimal" placeholder="Wechsel nach km, Standard 1000">
+      <input name="wear_limit" inputmode="decimal" placeholder="Verschleißgrenze %, Standard 0,75">
+    </div>
+    <input name="shop_url" type="url" placeholder="Link zum Artikel im Shop (optional)">
+    <input name="note" placeholder="Notiz, z. B. Lagerort (optional)">
+    <button>Ins Lager legen</button>
+  </form>
+</div>
+{% endblock %}
