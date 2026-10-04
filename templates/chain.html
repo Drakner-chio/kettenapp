@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_parts.html" import photo_form %}
+{% from "_parts.html" import photo_form, tags_view, tag_input %}
 {% block body %}
 {% set cur = chain.current_mount() %}
 {% set done = chain.since_mount() %}
@@ -27,6 +27,7 @@
     {% if chain.bought %} · gekauft am {{ chain.bought.strftime('%d.%m.%Y') }}{% endif %}
     {% if chain.note %}<br>{{ chain.note }}{% endif %}
   </div>
+  {% if chain.tag_list() %}<div>{{ tags_view(chain) }}</div>{% endif %}
   <details style="margin-top:8px">
     <summary class="mut" style="font-weight:400">Bearbeiten</summary>
     <form method="post" action="{{ url_for('chain_edit', chain_id=chain.id) }}" class="stack">
@@ -43,6 +44,7 @@
             {% for v in range(7, 14) %}<option value="{{ v }}" {% if chain.speeds == v|string %}selected{% endif %}>{{ v }}-fach</option>{% endfor %}
           </select></label>
       </div>
+      {{ tag_input(chain.tags) }}
       <input name="note" value="{{ chain.note or '' }}" placeholder="Notiz, z. B. gewachst, Lagerort">
       <label class="mut">Link zum Artikel im Shop (z. B. bike24)
         <input name="shop_url" type="url" value="{{ chain.shop_url or '' }}" placeholder="https://www.bike24.de/p…"></label>

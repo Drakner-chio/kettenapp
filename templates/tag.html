@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_parts.html" import chain_card, tags_view %}
+{% block body %}
+<h2>Tag</h2>
+<div class="card">
+  <div class="row"><strong>{{ tag }}</strong>
+    <span class="mut">{{ bikes|length }} {{ 'Rad' if bikes|length == 1 else 'Räder' }} · {{ parts|length }} {{ 'Teil' if parts|length == 1 else 'Teile' }}</span></div>
+  <div>{% for t in all_tags() %}<a class="tag" href="{{ url_for('tag_page', tag=t) }}" {% if t|lower == tag|lower %}style="border-color:var(--acc)"{% endif %}>{{ t }}</a>{% endfor %}</div>
+</div>
+
+{% if bikes %}
+<h2>Räder</h2>
+{% for b in bikes %}
+<a class="block" href="{{ url_for('bike_detail', bike_id=b.id) }}">
+<div class="card">
+  <strong>{{ b.name }}</strong>{% if b.retired %} <span class="badge">im Ruhestand</span>{% endif %}
+  <div class="mut">{{ b.drivetrain() }}{% if b.dt_group %} · {{ b.dt_group }}{% endif %}</div>
+  <div>{{ tags_view(b, link=False) }}</div>
+</div>
+</a>
+{% endfor %}
+{% endif %}
+
+{% if parts %}
+<h2>Teile</h2>
+{% for c in parts %}{{ chain_card(c) }}{% endfor %}
+{% endif %}
+
+{% if not bikes and not parts %}<p class="mut">Nichts mit diesem Tag.</p>{% endif %}
+{% endblock %}

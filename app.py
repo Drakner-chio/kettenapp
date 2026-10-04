@@ -55,6 +55,10 @@ class Bike(db.Model):
     dt_cassette = db.Column(db.String(120))  # z. B. "11-34 Ultegra"
     dt_group = db.Column(db.String(120))     # Schaltgruppe
     dt_note = db.Column(db.String(300))
+    tags = db.Column(db.String(300))   # frei vergebene Stichworte, mit Komma getrennt
+
+    def tag_list(self):
+        return [t.strip() for t in (self.tags or "").split(",") if t.strip()]
 
     def mounted(self, kind):
         """Aktuell montiertes Teil dieser Art (oder None)."""
@@ -89,6 +93,10 @@ class Chain(db.Model):
     bought = db.Column(db.Date)                       # Kaufdatum
     speeds = db.Column(db.String(4))                  # passt zu so vielen Gaengen hinten, z. B. "12"
     note = db.Column(db.String(300))
+    tags = db.Column(db.String(300))   # frei vergebene Stichworte, mit Komma getrennt
+
+    def tag_list(self):
+        return [t.strip() for t in (self.tags or "").split(",") if t.strip()]
 
     def is_new(self):
         """Noch nie montiert und ohne Vorkilometer."""
@@ -208,7 +216,8 @@ with app.app_context():
                             ("chain", "shop_url", "VARCHAR(500)"),
                             ("mount", "notified", "INTEGER DEFAULT 0"),
                             ("chain", "bought", "DATE"), ("chain", "speeds", "VARCHAR(4)"),
-                            ("chain", "note", "VARCHAR(300)")):
+                            ("chain", "note", "VARCHAR(300)"),
+                            ("chain", "tags", "VARCHAR(300)"), ("bike", "tags", "VARCHAR(300)")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             # sofort abschliessen: eine offene Aenderung sperrt die Tabelle und
@@ -237,6 +246,28 @@ def form_date_opt(field):
 def form_speeds():
     v = request.form.get("speeds", "").strip()
     return v if v.isdigit() and len(v) <= 2 else ""
+
+
+def form_tags():
+    """'SRAM, red ,sram' -> 'SRAM, red' (ohne Doppelte, hoechstens zehn)."""
+    out = []
+    for t in request.form.get("tags", "").replace(";", ",").split(","):
+        t = " ".join(t.split())[:30]
+        if t and t.lower() not in [o.lower() for o in out]:
+            out.append(t)
+    return ", ".join(out[:10])
+
+
+def all_tags():
+    """Alle bisher vergebenen Tags, als Vorschlaege beim Eintragen."""
+    found = {}
+    for obj in list(Bike.query.all()) + list(Chain.query.all()):
+        for t in obj.tag_list():
+            found.setdefault(t.lower(), t)
+    return sorted(found.values(), key=str.lower)
+
+
+app.jinja_env.globals["all_tags"] = all_tags
 
 
 def form_url(field="shop_url"):
@@ -584,7 +615,7 @@ def chain_add():
     chain = Chain(name=name, model=request.form.get("model", "").strip(),
                   kind=kind if kind in KINDS else "chain",
                   bought=form_date_opt("bought"), speeds=form_speeds(), shop_url=form_url(),
-                  note=request.form.get("note", "").strip()[:300],
+                  note=request.form.get("note", "").strip()[:300], tags=form_tags(),
                   initial_km=form_float("initial_km"),
                   swap_km=form_float("swap_km", 1000),
                   wear_limit=form_float("wear_limit", 0.75) or 0.75)
@@ -648,6 +679,7 @@ def chain_edit(chain_id):
     chain.shop_url = form_url()
     chain.bought, chain.speeds = form_date_opt("bought"), form_speeds()
     chain.note = request.form.get("note", "").strip()[:300]
+    chain.tags = form_tags()
     if chain.k == "chain":
         chain.swap_km = form_float("swap_km", chain.swap_km or 0)
         chain.wear_limit = form_float("wear_limit", chain.wear_limit) or 0.75
@@ -690,6 +722,9 @@ def stock():
     parts = [c for c in Chain.query.order_by(Chain.name) if not c.retired and not c.current_mount()]
     if sel:
         parts = [c for c in parts if c.fits(sel) is not False]
+    tag = request.args.get("tag", "").strip()
+    if tag:
+        parts = [c for c in parts if tag.lower() in [t.lower() for t in c.tag_list()]]
     # neue Teile zuerst, darunter das zuletzt gekaufte oben
     parts.sort(key=lambda c: (not c.is_new(), -(c.bought.toordinal() if c.bought else 0)))
     groups = {k: [c for c in parts if c.k == k] for k in KINDS}
@@ -705,10 +740,20 @@ def stock():
                           "kind": c.k, "name": next_name(c.name), "model": c.model or "",
                           "speeds": c.speeds or "", "swap_km": f"{c.swap_km or 0:g}",
                           "wear_limit": f"{c.wear_limit or 0.75:g}", "shop_url": c.shop_url or "",
-                          "note": c.note or ""})
+                          "note": c.note or "", "tags": c.tags or ""})
     templates.sort(key=lambda t: t["label"].lower())
     return render_template("stock.html", groups=groups, bikes=bikes, sel=sel, fit=fit, total=len(parts),
-                           templates=templates)
+                           templates=templates, tag=tag)
+
+
+@app.get("/tag/<path:tag>")
+def tag_page(tag):
+    """Alle Raeder und Teile mit diesem Tag."""
+    has = lambda o: tag.lower() in [t.lower() for t in o.tag_list()]
+    bikes = [b for b in Bike.query.order_by(Bike.name) if has(b)]
+    parts = [c for c in Chain.query.order_by(Chain.name) if has(c)]
+    parts.sort(key=lambda c: (bool(c.retired), list(KINDS).index(c.k)))
+    return render_template("tag.html", tag=tag, bikes=bikes, parts=parts)
 
 
 @app.get("/shop")
@@ -753,7 +798,7 @@ def chain_copy(chain_id):
     src = db.get_or_404(Chain, chain_id)
     new = Chain(name=next_name(src.name), model=src.model, kind=src.k, speeds=src.speeds,
                 swap_km=src.swap_km, wear_limit=src.wear_limit, shop_url=src.shop_url,
-                note=src.note, bought=date.today(), initial_km=0)
+                note=src.note, tags=src.tags, bought=date.today(), initial_km=0)
     db.session.add(new)
     db.session.commit()
     flash(f"{new.name} nach Vorlage {src.name} angelegt und ins Lager gelegt. Name und Kaufdatum bei Bedarf anpassen.")
@@ -794,6 +839,7 @@ def bike_drivetrain(bike_id):
     bike.dt_speeds = speeds if speeds.isdigit() else ""
     bike.dt_rings, bike.dt_cassette = f("dt_rings", 80), f("dt_cassette", 120)
     bike.dt_group, bike.dt_note = f("dt_group", 120), f("dt_note", 300)
+    bike.tags = form_tags()
     if not bike.strava_id and f("name", 120):  # Strava-Namen kaemen beim Abgleich zurueck
         bike.name = f("name", 120)
     db.session.commit()

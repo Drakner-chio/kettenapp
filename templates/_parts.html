@@ -1,3 +1,13 @@
+{% macro tags_view(obj, link=True) %}
+{% for t in obj.tag_list() %}{% if link %}<a class="tag" href="{{ url_for('tag_page', tag=t) }}">{{ t }}</a>{% else %}<span class="tag">{{ t }}</span>{% endif %}{% endfor %}
+{% endmacro %}
+
+{% macro tag_input(value) %}
+<input name="tags" value="{{ value or '' }}" placeholder="Tags mit Komma, z. B. SRAM, Red, AXS" autocapitalize="off">
+{% set known = all_tags() %}
+{% if known %}<div>{% for t in known %}<button type="button" class="tag" onclick="addTag(this)">{{ t }}</button>{% endfor %}</div>{% endif %}
+{% endmacro %}
+
 {% macro chain_card(c, sub=False) %}
 {% set done = c.since_mount() %}
 <a class="block{% if sub %} sub{% endif %}" href="{{ url_for('chain_detail', chain_id=c.id) }}">
@@ -20,6 +30,7 @@
       </span>
       {% if c.status() %}<span class="badge {{ c.status() }}">{{ c.status() }}</span>{% endif %}
     </div>
+    {% if c.tag_list() %}<div>{{ tags_view(c, link=False) }}</div>{% endif %}
     {% if c.k == 'chain' and done is not none and c.swap_km %}
     <div class="bar"><i class="{{ c.status() }}" style="width:{{ [100, 100 * done / c.swap_km]|min|round|int }}%"></i></div>
     {% endif %}

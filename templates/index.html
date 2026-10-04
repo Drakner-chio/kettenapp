@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_parts.html" import chain_card %}
+{% from "_parts.html" import chain_card, tags_view %}
 {% block body %}
 
 {% if all_bikes %}
@@ -34,6 +34,7 @@
       {% set n = b.chains|selectattr('k', 'equalto', 'chain')|list|length %}{{ n }} {{ 'Kette' if n == 1 else 'Ketten' }}
       {% if not b.bike.strava_id %} · manuell angelegt{% endif %}
     </div>
+    {% if b.bike.tag_list() %}<div>{{ tags_view(b.bike, link=False) }}</div>{% endif %}
   </div>
 </div>
 </a>

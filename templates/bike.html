@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_parts.html" import chain_card, photo_form %}
+{% from "_parts.html" import chain_card, photo_form, tags_view, tag_input %}
 {% block body %}
 <h2>Rad</h2>
 <div class="card">
@@ -13,6 +13,7 @@
     {% if bike.dt_group %}{% if bike.drivetrain() %} · {% endif %}{{ bike.dt_group }}{% endif %}
     {% if bike.dt_note %}<br>{{ bike.dt_note }}{% endif %}
   </div>
+  {% if bike.tag_list() %}<div>{{ tags_view(bike) }}</div>{% endif %}
   <details style="margin-top:8px">
     <summary class="mut" style="font-weight:400">Rad bearbeiten</summary>
     <form method="post" action="{{ url_for('bike_drivetrain', bike_id=bike.id) }}" class="stack">
@@ -28,6 +29,7 @@
         </select>
       </div>
       <input name="dt_group" value="{{ bike.dt_group or '' }}" placeholder="Schaltgruppe, z. B. Shimano 105 Di2">
+      {{ tag_input(bike.tags) }}
       <input name="dt_note" value="{{ bike.dt_note or '' }}" placeholder="Notiz, z. B. Kurbel 172,5 mm">
       <button>Speichern</button>
     </form>

@@ -57,6 +57,8 @@
   .item > .grow { flex:1; min-width:0; }
   a.block { text-decoration:none; color:inherit; display:block; }
   .sub { margin-left:18px; }
+  .tag { display:inline-block; width:auto; font-size:.75rem; font-weight:500; padding:2px 9px; margin:4px 4px 0 0; border-radius:99px;
+    border:1px solid var(--line); background:var(--bg); color:var(--fg); text-decoration:none; cursor:pointer; }
   .two { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 </style>
 </head>
@@ -76,5 +78,12 @@
 {% for m in get_flashed_messages() %}<p class="flash">{{ m }}</p>{% endfor %}
 {% block body %}{% endblock %}
 </main>
+<script>
+function addTag(btn) {
+  var inp = btn.closest('form').elements.tags, t = btn.textContent;
+  var have = inp.value.split(',').map(function (x) { return x.trim().toLowerCase(); });
+  if (have.indexOf(t.toLowerCase()) < 0) inp.value = inp.value.trim() ? inp.value.replace(/[,\s]+$/, '') + ', ' + t : t;
+}
+</script>
 </body>
 </html>
