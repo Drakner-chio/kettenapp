@@ -114,6 +114,14 @@
       <label class="mut"><input type="checkbox" name="full" value="1" style="width:auto"> alle Fahrten neu einlesen</label>
     </form>
   {% endif %}
+  <details style="margin-top:12px" {% if not ntfy_url %}open{% endif %}>
+    <summary>Benachrichtigungen aufs Handy{% if ntfy_url %} · aktiv{% endif %}</summary>
+    <form method="post" action="{{ url_for('settings_ntfy') }}" class="stack">
+      <input name="ntfy_url" type="url" value="{{ ntfy_url }}" placeholder="https://ntfy.sh/dein-geheimer-kanalname">
+      <button>Speichern und testen</button>
+      <span class="mut">Meldet jede montierte Kette einmal 100 km vor dem Wechsel und einmal beim Erreichen. Feld leeren und speichern schaltet es aus.</span>
+    </form>
+  </details>
   <details style="margin-top:12px">
     <summary>Rad ohne Strava anlegen</summary>
     <form method="post" action="{{ url_for('bike_add') }}" class="stack">

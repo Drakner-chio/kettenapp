@@ -1,6 +1,7 @@
 import hmac
 import os
 import secrets
+import threading
 import time
 from datetime import date, datetime, timedelta
 from urllib.parse import quote_plus, urlencode
@@ -138,6 +139,7 @@ class Mount(db.Model):
     bike_id = db.Column(db.Integer, db.ForeignKey("bike.id"), nullable=False)
     start_day = db.Column(db.Date, nullable=False)
     end_day = db.Column(db.Date)  # None = aktuell montiert
+    notified = db.Column(db.Integer, default=0)  # 0 nichts, 1 Vorwarnung, 2 Wechsel gemeldet
     bike = db.relationship("Bike")
 
     def km(self):
@@ -166,6 +168,11 @@ class WearCheck(db.Model):
     km_at = db.Column(db.Float, default=0)
 
 
+class Setting(db.Model):
+    key = db.Column(db.String(40), primary_key=True)
+    value = db.Column(db.String(500), default="")
+
+
 class Token(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     access = db.Column(db.String(200))
@@ -184,12 +191,15 @@ with app.app_context():
                             ("bike", "dt_group", "VARCHAR(120)"), ("bike", "dt_note", "VARCHAR(300)"),
                             ("chain", "kind", "VARCHAR(12) DEFAULT 'chain'"),
                             ("chain", "swap_km", "FLOAT DEFAULT 1000"),
-                            ("chain", "shop_url", "VARCHAR(500)")):
+                            ("chain", "shop_url", "VARCHAR(500)"),
+                            ("mount", "notified", "INTEGER DEFAULT 0")):
         if col not in [c["name"] for c in inspect(db.engine).get_columns(table)]:
             db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             # sofort abschliessen: eine offene Aenderung sperrt die Tabelle und
             # wuerde die naechste Spaltenpruefung endlos warten lassen
             db.session.commit()
+    db.session.remove()
+    db.engine.dispose()  # keine offene Verbindung in spaeter gestartete Prozesse mitnehmen
 
 
 # ---------------------------------------------------------------- Helfer
@@ -242,6 +252,69 @@ def save_photo(obj):
     img.save(os.path.join(UPLOAD_DIR, name), "JPEG", quality=85)
     remove_photo(obj)
     obj.photo = name
+
+
+def get_setting(key):
+    row = db.session.get(Setting, key)
+    return row.value if row else ""
+
+
+def set_setting(key, value):
+    row = db.session.get(Setting, key) or Setting(key=key)
+    row.value = value
+    db.session.add(row)
+    db.session.commit()
+
+
+WARN_KM = 100  # Vorwarnung so viele km vor dem Wechsel
+
+
+def notify(title, message, click=""):
+    """Nachricht ueber ntfy aufs Handy schicken. Gibt False zurueck, wenn nichts eingerichtet ist."""
+    url = get_setting("ntfy_url").rstrip("/")
+    if not url:
+        return False
+    server, topic = url.rsplit("/", 1)
+    r = requests.post(server, timeout=15, json={
+        "topic": topic, "title": title, "message": message,
+        "click": click or BASE_URL, "tags": ["bike"]})
+    r.raise_for_status()
+    return True
+
+
+def check_chains():
+    """Fuer jede montierte Kette hoechstens einmal vorwarnen und einmal den Wechsel melden."""
+    if not get_setting("ntfy_url"):
+        return
+    for c in Chain.query.all():
+        m = c.current_mount()
+        if c.retired or c.k != "chain" or not m or not c.swap_km:
+            continue
+        done, old = m.km(), m.notified or 0
+        level = 2 if done >= c.swap_km else 1 if done >= c.swap_km - WARN_KM else 0
+        if level < old:  # Intervall erhoeht oder Fahrten geloescht: wieder scharf stellen
+            m.notified = level
+            db.session.commit()
+        if level <= old:
+            continue
+        # Stufe zuerst in der Datenbank setzen, damit nie doppelt gemeldet wird
+        claimed = Mount.query.filter(Mount.id == m.id, func.coalesce(Mount.notified, 0) < level).update(
+            {"notified": level}, synchronize_session=False)
+        db.session.commit()
+        if not claimed:
+            continue
+        where = f"{c.name} am {m.bike.name}"
+        try:
+            if level == 2:
+                notify("Kette wechseln", f"{where}: {done:.0f} von {c.swap_km:.0f} km erreicht.",
+                       f"{BASE_URL}/chain/{c.id}")
+            else:
+                notify("Kette bald wechseln", f"{where}: {done:.0f} von {c.swap_km:.0f} km, "
+                       f"noch {c.swap_km - done:.0f} km.", f"{BASE_URL}/chain/{c.id}")
+        except Exception:
+            Mount.query.filter_by(id=m.id).update({"notified": old}, synchronize_session=False)
+            db.session.commit()  # beim naechsten Lauf erneut versuchen
+            raise
 
 
 @app.context_processor
@@ -422,6 +495,7 @@ def index():
     manual = Ride.query.filter_by(strava_id=None).order_by(Ride.day.desc(), Ride.id.desc()).limit(10).all()
     return render_template("index.html", bikes=bikes, loose=loose, manual=manual,
                            all_bikes=[b["bike"] for b in bikes], retired_bikes=retired_bikes,
+                           ntfy_url=get_setting("ntfy_url"),
                            retired_chains=[c for c in all_chains if c.retired])
 
 
@@ -545,6 +619,25 @@ def chain_edit(chain_id):
     db.session.commit()
     flash("Gespeichert")
     return redirect(url_for("chain_detail", chain_id=chain.id))
+
+
+@app.post("/settings/ntfy")
+def settings_ntfy():
+    url = form_url("ntfy_url")
+    if url.count("/") < 3 or not url.rstrip("/").rsplit("/", 1)[-1]:
+        url = ""  # es fehlt der Kanalname hinter der Server-Adresse
+    set_setting("ntfy_url", url)
+    if not url:
+        flash("Benachrichtigungen ausgeschaltet")
+    else:
+        try:
+            notify("Ketten-App", "Die Benachrichtigungen funktionieren.")
+            flash("Gespeichert, Testnachricht gesendet")
+            check_chains()
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Gespeichert, aber die Testnachricht ging nicht raus: {e}")
+    return redirect(url_for("index"))
 
 
 @app.get("/shop")
@@ -689,3 +782,25 @@ def ride_delete(ride_id):
     if request.form.get("back") == "bike":
         return redirect(url_for("bike_detail", bike_id=bike_id))
     return redirect(url_for("index"))
+
+
+# ---------------------------------------------------------------- Hintergrund
+
+def background():
+    """Stuendlich: Strava abgleichen und Ketten pruefen, auch wenn niemand die App oeffnet."""
+    time.sleep(60)
+    while True:
+        with app.app_context():
+            try:
+                t = db.session.get(Token, 1)
+                if t and time.time() - (t.last_sync or 0) > SYNC_INTERVAL - 300:
+                    strava_sync()
+                check_chains()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.warning("Hintergrundlauf fehlgeschlagen: %s", e)
+        time.sleep(3600)
+
+
+if os.environ.get("BACKGROUND", "1") == "1":
+    threading.Thread(target=background, daemon=True).start()
