@@ -67,8 +67,8 @@
   <nav>
     <a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="on"{% endif %}>Übersicht</a>
     <a href="{{ url_for('shop') }}" {% if request.endpoint == 'shop' %}class="on"{% endif %}>Ersatzteile</a>
+    <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="on"{% endif %}>Einstellungen</a>
   </nav>
-  <form method="post" action="{{ url_for('logout') }}"><button class="plain">Abmelden</button></form>
   {% endif %}
 </header>
 <main>

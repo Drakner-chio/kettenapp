@@ -449,7 +449,7 @@ def strava_callback():
         abort(400)
     if "code" not in request.args:
         flash("Strava-Anmeldung abgebrochen")
-        return redirect(url_for("index"))
+        return redirect(url_for("settings"))
     r = requests.post(STRAVA_TOKEN_URL, timeout=20, data={
         "client_id": STRAVA_ID, "client_secret": STRAVA_SECRET,
         "code": request.args["code"], "grant_type": "authorization_code"})
@@ -461,7 +461,7 @@ def strava_callback():
     db.session.commit()
     n = strava_sync(full=True)
     flash(f"Strava verbunden, {n} Fahrten importiert")
-    return redirect(url_for("index"))
+    return redirect(url_for("settings"))
 
 
 @app.post("/strava/sync")
@@ -472,7 +472,7 @@ def strava_sync_now():
     except Exception as e:
         db.session.rollback()
         flash(f"Strava-Abgleich fehlgeschlagen: {e}")
-    return redirect(url_for("index"))
+    return redirect(url_for("settings"))
 
 
 # ---------------------------------------------------------------- Seiten
@@ -621,6 +621,13 @@ def chain_edit(chain_id):
     return redirect(url_for("chain_detail", chain_id=chain.id))
 
 
+@app.get("/settings")
+def settings():
+    t = db.session.get(Token, 1)
+    last = datetime.fromtimestamp(t.last_sync).strftime("%d.%m.%Y %H:%M") if t and t.last_sync else ""
+    return render_template("settings.html", ntfy_url=get_setting("ntfy_url"), last_sync=last)
+
+
 @app.post("/settings/ntfy")
 def settings_ntfy():
     url = form_url("ntfy_url")
@@ -637,7 +644,7 @@ def settings_ntfy():
         except Exception as e:
             db.session.rollback()
             flash(f"Gespeichert, aber die Testnachricht ging nicht raus: {e}")
-    return redirect(url_for("index"))
+    return redirect(url_for("settings"))
 
 
 @app.get("/shop")

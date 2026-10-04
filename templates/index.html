@@ -39,7 +39,7 @@
 </a>
 {% for c in b.chains %}{{ chain_card(c, sub=True) }}{% endfor %}
 {% else %}
-<p class="mut">Noch keine Räder. Lege unten in den Einstellungen eines an.</p>
+<p class="mut">Noch keine Räder. Verbinde Strava oder lege unter „Einstellungen“ ein Rad an.</p>
 {% endfor %}
 
 {% if loose %}
@@ -102,32 +102,4 @@
 </div>
 {% endif %}
 
-<h2>Einstellungen</h2>
-<div class="card">
-  {% if not strava_configured %}
-    <p class="mut" style="margin:0">Strava ist nicht eingerichtet (STRAVA_CLIENT_ID fehlt in der .env).</p>
-  {% elif not strava_connected %}
-    <a href="{{ url_for('strava_login') }}"><button type="button">Mit Strava verbinden</button></a>
-  {% else %}
-    <form method="post" action="{{ url_for('strava_sync_now') }}" class="stack" style="margin-top:0">
-      <button>Strava jetzt abgleichen</button>
-      <label class="mut"><input type="checkbox" name="full" value="1" style="width:auto"> alle Fahrten neu einlesen</label>
-    </form>
-  {% endif %}
-  <details style="margin-top:12px" {% if not ntfy_url %}open{% endif %}>
-    <summary>Benachrichtigungen aufs Handy{% if ntfy_url %} · aktiv{% endif %}</summary>
-    <form method="post" action="{{ url_for('settings_ntfy') }}" class="stack">
-      <input name="ntfy_url" type="url" value="{{ ntfy_url }}" placeholder="https://ntfy.sh/dein-geheimer-kanalname">
-      <button>Speichern und testen</button>
-      <span class="mut">Meldet jede montierte Kette einmal 100 km vor dem Wechsel und einmal beim Erreichen. Feld leeren und speichern schaltet es aus.</span>
-    </form>
-  </details>
-  <details style="margin-top:12px">
-    <summary>Rad ohne Strava anlegen</summary>
-    <form method="post" action="{{ url_for('bike_add') }}" class="stack">
-      <input name="name" placeholder="Name" required>
-      <button>Anlegen</button>
-    </form>
-  </details>
-</div>
 {% endblock %}

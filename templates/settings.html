@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Strava</h2>
+<div class="card">
+  {% if not strava_configured %}
+    <p class="mut" style="margin:0">Strava ist nicht eingerichtet (STRAVA_CLIENT_ID fehlt in der .env).</p>
+  {% elif not strava_connected %}
+    <a class="btn" href="{{ url_for('strava_login') }}">Mit Strava verbinden</a>
+  {% else %}
+    <p class="mut" style="margin:0 0 10px">Verbunden. Abgleich automatisch jede Stunde{% if last_sync %}, zuletzt {{ last_sync }} Uhr (Serverzeit){% endif %}.</p>
+    <form method="post" action="{{ url_for('strava_sync_now') }}" class="stack" style="margin-top:0">
+      <button>Strava jetzt abgleichen</button>
+      <label class="mut"><input type="checkbox" name="full" value="1" style="width:auto"> alle Fahrten neu einlesen</label>
+    </form>
+  {% endif %}
+</div>
+
+<h2>Benachrichtigungen aufs Handy</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('settings_ntfy') }}" class="stack" style="margin-top:0">
+    <input name="ntfy_url" type="url" value="{{ ntfy_url }}" placeholder="https://ntfy.sh/dein-geheimer-kanalname">
+    <button>Speichern und testen</button>
+    <span class="mut">{{ 'Aktiv. ' if ntfy_url }}Meldet jede montierte Kette einmal 100 km vor dem Wechsel und einmal beim Erreichen. Feld leeren und speichern schaltet es aus.</span>
+  </form>
+</div>
+
+<h2>Rad ohne Strava anlegen</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('bike_add') }}" class="stack" style="margin-top:0">
+    <input name="name" placeholder="Name, z. B. Stadtrad" required>
+    <button>Anlegen</button>
+  </form>
+</div>
+
+<h2>Konto</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('logout') }}"><button class="plain" style="width:100%">Abmelden</button></form>
+</div>
+{% endblock %}
