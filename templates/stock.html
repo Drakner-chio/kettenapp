@@ -52,6 +52,12 @@
 <div class="card">
   <form method="post" action="{{ url_for('chain_add') }}" class="stack" style="margin-top:0">
     <input type="hidden" name="back" value="stock">
+    {% if templates %}
+    <select onchange="useTemplate(this)">
+      <option value="">Vorlage wählen (optional) …</option>
+      {% for t in templates %}<option data-t='{{ t|tojson }}'>{{ t.label }}</option>{% endfor %}
+    </select>
+    {% endif %}
     <div class="two">
       <select name="kind" onchange="this.form.querySelector('.only-chain').hidden = this.value != 'chain'">
         {% for k, label in KINDS.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
@@ -76,4 +82,13 @@
     <button>Ins Lager legen</button>
   </form>
 </div>
+<script>
+function useTemplate(sel) {
+  var raw = sel.selectedOptions[0].dataset.t;
+  if (!raw) return;
+  var t = JSON.parse(raw), f = sel.form;
+  for (var k in t) if (f.elements[k]) f.elements[k].value = t[k];
+  f.querySelector('.only-chain').hidden = t.kind != 'chain';
+}
+</script>
 {% endblock %}

@@ -1,5 +1,6 @@
 import hmac
 import os
+import re
 import secrets
 import threading
 import time
@@ -693,7 +694,21 @@ def stock():
     parts.sort(key=lambda c: (not c.is_new(), -(c.bought.toordinal() if c.bought else 0)))
     groups = {k: [c for c in parts if c.k == k] for k in KINDS}
     fit = {c.id: [b for b in bikes if c.fits(b)] for c in parts}
-    return render_template("stock.html", groups=groups, bikes=bikes, sel=sel, fit=fit, total=len(parts))
+    # Vorlagen: jedes bisher angelegte Modell einmal, auch aus dem Ruhestand
+    templates, seen = [], set()
+    for c in Chain.query.order_by(Chain.id.desc()):
+        key = (c.k, (c.model or c.name).lower(), c.speeds or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        templates.append({"label": f"{KINDS[c.k]}: {c.model or c.name}" + (f" ({c.speeds}-fach)" if c.speeds else ""),
+                          "kind": c.k, "name": next_name(c.name), "model": c.model or "",
+                          "speeds": c.speeds or "", "swap_km": f"{c.swap_km or 0:g}",
+                          "wear_limit": f"{c.wear_limit or 0.75:g}", "shop_url": c.shop_url or "",
+                          "note": c.note or ""})
+    templates.sort(key=lambda t: t["label"].lower())
+    return render_template("stock.html", groups=groups, bikes=bikes, sel=sel, fit=fit, total=len(parts),
+                           templates=templates)
 
 
 @app.get("/shop")
@@ -711,6 +726,38 @@ def chain_shop(chain_id):
     chain.shop_url = form_url()
     db.session.commit()
     return redirect(url_for("shop"))
+
+
+def next_name(name):
+    """Freien Namen vorschlagen: 'Kette A' -> 'Kette B', 'Kette 2' -> 'Kette 3', sonst '... 2'."""
+    used = {c.name for c in Chain.query.all()}
+    m = re.fullmatch(r"(.*\s)([A-Y])", name)
+    n = re.fullmatch(r"(.*\s)(\d+)", name)
+    for _ in range(200):
+        if m:
+            name = m.group(1) + chr(ord(m.group(2)) + 1)
+            m = re.fullmatch(r"(.*\s)([A-Y])", name)
+        elif n:
+            name = n.group(1) + str(int(n.group(2)) + 1)
+            n = re.fullmatch(r"(.*\s)(\d+)", name)
+        else:
+            name, n = name + " 2", re.fullmatch(r"(.*\s)(\d+)", name + " 2")
+        if name not in used:
+            break
+    return name[:120]
+
+
+@app.post("/chain/<int:chain_id>/copy")
+def chain_copy(chain_id):
+    """Neues Teil mit denselben Angaben anlegen (Modell, Gaenge, Intervalle, Shop-Link)."""
+    src = db.get_or_404(Chain, chain_id)
+    new = Chain(name=next_name(src.name), model=src.model, kind=src.k, speeds=src.speeds,
+                swap_km=src.swap_km, wear_limit=src.wear_limit, shop_url=src.shop_url,
+                note=src.note, bought=date.today(), initial_km=0)
+    db.session.add(new)
+    db.session.commit()
+    flash(f"{new.name} nach Vorlage {src.name} angelegt und ins Lager gelegt. Name und Kaufdatum bei Bedarf anpassen.")
+    return redirect(url_for("chain_detail", chain_id=new.id))
 
 
 @app.post("/chain/<int:chain_id>/retire")
