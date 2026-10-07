@@ -288,7 +288,3 @@ Erste Version.
 ---
 
 <p align="center">Ein Projekt von <b>Drakner-Chio</b></p>
-
-## Lizenz
-
-Veröffentlicht unter der [MIT-Lizenz](LICENSE).

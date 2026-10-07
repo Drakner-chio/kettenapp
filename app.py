@@ -1,4 +1,5 @@
 import hmac
+import json
 import os
 import re
 import secrets
@@ -8,7 +9,7 @@ from datetime import date, datetime, timedelta
 from urllib.parse import quote_plus, urlencode
 
 import requests
-from flask import (Flask, abort, flash, redirect, render_template, request,
+from flask import (Flask, Response, abort, flash, redirect, render_template, request,
                    send_from_directory, session, url_for)
 from flask_sqlalchemy import SQLAlchemy
 from PIL import Image, ImageOps
@@ -693,6 +694,61 @@ def settings():
     t = db.session.get(Token, 1)
     last = datetime.fromtimestamp(t.last_sync).strftime("%d.%m.%Y %H:%M") if t and t.last_sync else ""
     return render_template("settings.html", ntfy_url=get_setting("ntfy_url"), last_sync=last)
+
+
+@app.get("/export.json")
+def export_json():
+    """Alle Daten samt Fotos als Datei, im Format der Handy-App."""
+    import base64
+    photos = {}
+
+    def pic(obj):
+        name = obj.photo or ""
+        if not re.fullmatch(r"[\w.-]{1,60}", name):
+            return ""
+        try:
+            with open(os.path.join(UPLOAD_DIR, name), "rb") as fh:
+                photos[name] = "data:image/jpeg;base64," + base64.b64encode(fh.read()).decode("ascii")
+        except OSError:
+            return ""
+        return name
+
+    iso = lambda d: d.isoformat() if d else None
+    data = {
+        "version": 1,
+        "bikes": [{"id": b.id, "name": b.name, "strava_id": b.strava_id, "retired": bool(b.retired),
+                   "dt_front": b.dt_front or "", "dt_speeds": b.dt_speeds or "", "dt_group": b.dt_group or "",
+                   "dt_note": b.dt_note or "", "tags": b.tags or "", "photo": pic(b)} for b in Bike.query.order_by(Bike.id)],
+        "parts": [{"id": c.id, "kind": c.k, "name": c.name, "model": c.model or "",
+                   "initial_km": c.initial_km or 0, "swap_km": c.swap_km or 0, "wear_limit": c.wear_limit or 0.75,
+                   "retired": bool(c.retired), "shop_url": c.shop_url or "", "bought": iso(c.bought),
+                   "speeds": c.speeds or "", "note": c.note or "", "tags": c.tags or "", "photo": pic(c)}
+                  for c in Chain.query.order_by(Chain.id)],
+        "mounts": [{"id": m.id, "part_id": m.chain_id, "bike_id": m.bike_id, "start": iso(m.start_day),
+                    "end": iso(m.end_day), "notified": m.notified or 0} for m in Mount.query.order_by(Mount.id)],
+        "rides": [{"id": r.id, "bike_id": r.bike_id, "day": iso(r.day), "km": r.km, "note": r.note or "",
+                   "strava_id": r.strava_id} for r in Ride.query.order_by(Ride.id)],
+        "checks": [{"id": w.id, "part_id": w.chain_id, "day": iso(w.day), "percent": w.percent,
+                    "km_at": w.km_at or 0} for w in WearCheck.query.order_by(WearCheck.id)],
+        "settings": {},
+        "photos": photos,
+    }
+    # jede Tabelle zaehlt ihre Nummern selbst; die Handy-App braucht sie ueber alles hinweg eindeutig
+    offset = 0
+    for key, refs in (("bikes", ()), ("parts", ()), ("mounts", ()), ("rides", ()), ("checks", ())):
+        ids = {row["id"]: row["id"] + offset for row in data[key]}
+        for row in data[key]:
+            row["id"] = ids[row["id"]]
+        if key == "bikes":
+            for row in data["mounts"] + data["rides"]:
+                row["bike_id"] = ids.get(row["bike_id"], row["bike_id"])
+        if key == "parts":
+            for row in data["mounts"] + data["checks"]:
+                row["part_id"] = ids.get(row["part_id"], row["part_id"])
+        offset = max(ids.values(), default=offset)
+    name = f"kettenapp-export-{date.today().isoformat()}.json"
+    return Response(json.dumps(data, ensure_ascii=False), mimetype="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.post("/settings/ntfy")

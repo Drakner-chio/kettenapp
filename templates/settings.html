@@ -32,6 +32,12 @@
   </form>
 </div>
 
+<h2>Daten exportieren</h2>
+<div class="card">
+  <a class="btn plain" href="{{ url_for('export_json') }}">Export für die Handy-App herunterladen (mit Fotos)</a>
+  <p class="mut" style="margin:10px 0 0">Enthält Räder, Teile, Montagen, Fahrten, Messungen und Fotos. In der Handy-App unter Einstellungen → „Daten einspielen“ laden.</p>
+</div>
+
 <h2>Konto</h2>
 <div class="card">
   <form method="post" action="{{ url_for('logout') }}"><button class="plain" style="width:100%">Abmelden</button></form>
